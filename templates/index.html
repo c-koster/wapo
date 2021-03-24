@@ -1,0 +1,25 @@
+{% extends "layout.html" %}
+
+{% block title %}
+    Home
+{% endblock %}
+
+
+{% block content %}
+
+<div class="ui vertical segment">
+
+    {% for ex in examples %}
+        
+    {% endfor %}
+    <h2 class="ui sub header">id: {{ ex.id }}</h2>
+    <p> {{ ex.book }}, {{ ex.page }}, {{ ex.index }}: </p>
+    <p> {{ ex.left }} <b> {{ ex.number }} </b>  {{ ex.right }} </p>
+    <ul class="ui list">
+        {% for l in ex.labels %}
+            <li> {{ l.label }} by {{ l.user }}</li>
+        {% endfor %}
+    </ul>
+</div>
+
+{% endblock %}
