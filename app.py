@@ -22,36 +22,36 @@ def index():
         for line in fp:
             if num_ids > 50:
                 break
-            links.append(line.strip())
+            links.append({'id':line.strip()})
             num_ids += 1
 
 
     return render_template("index.html",links=links)
 
 
-@app.route("/articles/<str:article_id>")
+@app.route("/article/<string:article_id>")
 def article(article_id):
     # 1. query using article_id on the article i'm looking for
     doc = get_article(article_id)
 
-
     # 2. check if we found the article
     if doc['id'] == False: # if we didn't find it render a 404 page
-        return render_template("error.html")
+        return render_template("error.html",msg={'code':404,'text':'404 not found'})
 
     # 3. if we *did* find it, search for some relevant articles using Whoosh
-    links = ["0000e8a3e952907fac7e965ced9194ba", "00029f4a07559d69995bfc013985924a",
-             "00041887f95b15333ae39503610f2de1", "000563252f7569174d0f1a2aff115854"]
+    links = [{"id":"0000e8a3e952907fac7e965ced9194ba"}, {"id":"00029f4a07559d69995bfc013985924a"},
+             {"id":"00041887f95b15333ae39503610f2de1"}, {"id":"000563252f7569174d0f1a2aff115854"}]
 
     # 4. then apply *my model* to the search results and rank them in decreasing order of relevance
     # ( this will be the big assignment )
+    print(doc['contents'][1]['content'])
 
     # 5. Finally use the links and article to render the page.
-    return render_template("article.html",article_json=article_json,links=links)
+    return render_template("article.html",article=doc,links=links)
 
 
 
-# some helper functions ---
+# some helper functions --- this takes a hot minute to do a request
 def get_article(id):
     with gzip.open('TREC_Washington_Post_collection.v3.jl.gz', 'rt') as fp:
         for line in fp:

@@ -1,9 +1,24 @@
 {% extends "layout.html" %}
 
 {% block title %}
-
+    {{ article.title }}
 {% endblock %}
 
 {% block content %}
+<div class="ui segment">
+    {% for c in article.contents %}
+        {{ c }}
 
+    {% endfor %}
+</div>
+<div class="ui vertical segment">
+    {% for link in links %}
+    <div class="ui vertical segment">
+        <a href="{{ url_for('article', article_id=link.id) }}">
+            {{ link.id }}
+        </a>
+    </div>
+    {% endfor %}
+
+</div>
 {% endblock %}

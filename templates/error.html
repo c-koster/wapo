@@ -1,0 +1,11 @@
+{% extends "layout.html" %}
+
+{% block title %}
+    ERROR {{ msg.code }}
+{% endblock %}
+
+{% block content %}
+<div class="ui header">
+    Error: {{ msg.text }}
+</div>
+{% endblock %}

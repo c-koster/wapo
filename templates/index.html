@@ -8,18 +8,18 @@
 {% block content %}
 
 <div class="ui vertical segment">
+    <div class="ui header">
+        Welcome to fake-wapo. Here are some example links for your perusal
+    </div>
 
-    {% for ex in examples %}
-        
+    {% for link in links %}
+        <div class="ui vertical segment">
+            <a href="{{ url_for('article', article_id=link.id) }}">
+                {{ link.id }}
+            </a>
+        </div>
+
     {% endfor %}
-    <h2 class="ui sub header">id: {{ ex.id }}</h2>
-    <p> {{ ex.book }}, {{ ex.page }}, {{ ex.index }}: </p>
-    <p> {{ ex.left }} <b> {{ ex.number }} </b>  {{ ex.right }} </p>
-    <ul class="ui list">
-        {% for l in ex.labels %}
-            <li> {{ l.label }} by {{ l.user }}</li>
-        {% endfor %}
-    </ul>
 </div>
 
 {% endblock %}
