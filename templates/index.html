@@ -14,8 +14,8 @@
 
     {% for link in links %}
         <div class="ui vertical segment">
-            <a href="{{ url_for('article', article_id=link.id) }}">
-                {{ link.id }}
+            <a href="{{ url_for('article', article_id=link.path) }}">
+                {{ link.title }}
             </a>
         </div>
 

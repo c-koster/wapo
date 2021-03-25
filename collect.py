@@ -4,48 +4,45 @@ Also I included here the two functions I'll need to search through these article
 
 """
 import gzip, json
+import os.path
+import datetime as dt
+
 from whoosh.index import create_in
 from whoosh.fields import Schema, TEXT, ID, DATETIME
-from whoosh.qparser import QueryParser
 
-import os.path
+def parse_doc(doc):
+    """
+    Get a simplified doc dictionary and also run beautifulsoup on the text content
+    to get all the HTML yuck out of there.
+    """
+    # UNIX TIMESTAMP -> datetime object
+    # (1325379405000)
+    date_pub_timestamp = str(dt.datetime.fromtimestamp(doc['published_date']//1000))
+    title = doc['title']
+    author = doc['author']
+    text = ""
+    for c in doc['contents']:
+        try:
+            if c['subtype'] == 'paragraph':
+                text += c['content'] + "\n\n" # NEEDS beautiful soup
 
-schema = Schema(title=TEXT(stored=True), path=ID(stored=True), content=TEXT,date=DATETIME)
-ix = create_in("indexdir", schema)
+        except KeyError:
+            continue
 
-def search(text_terms):
-
-    return
-
-
-def get_by_id(article_id):
-    with ix.searcher() as searcher:
-         query = QueryParser("content", ix.schema).parse("is")
-         results = searcher.search(query)
-         print(results[0])
-
-         for r in results:
-             print (r, r.score)
-             # Was this results object created with terms=True?
-             if results.has_matched_terms():
-                # What terms matched in the results?
-                print(results.matched_terms())
-
-         # What terms matched in each hit?
-         print ("matched terms")
-         for hit in results:
-            print(hit.matched_terms())
-    return
-
-
+    newdict = {'id':doc['id'],'title':title,'author':author,'text':text,'date':date_pub_timestamp}
+    return newdict
 
 
 if __name__ == '__main__':
+
     if not os.path.exists("indexdir"):
         os.mkdir("indexdir")
 
-    writer = ix.writer()
-    writer.add_document(title=u"First document", path=u"/a",content=u"This is the first document we've added!")
+    schema = Schema(title = TEXT(stored=True), path = ID(stored=True),
+                    author= TEXT(stored=True), content = TEXT(stored=True),
+                    date  = TEXT(stored=True))
+
+    ix = create_in("indexdir", schema)
 
     keep = set()
     with open('queries/all.ids', 'r') as fp:
@@ -53,18 +50,25 @@ if __name__ == '__main__':
             keep.add(line.strip())
 
     found = 0
-    with open('trec.wapo.mini.jsonl', 'w') as out:
+    with ix.writer() as writer:
         with gzip.open('TREC_Washington_Post_collection.v3.jl.gz', 'rt') as fp:
+
             for line in fp:
                 doc = json.loads(line)
                 if doc['id'] in keep:
-                    writer.add_document(title=u"hello world",content=u"this is a test")
+                    parsed_doc = parse_doc(doc)
+
+                    writer.add_document(title=parsed_doc['title'], content=parsed_doc['text'],
+                                        path=parsed_doc['id'], author=parsed_doc['author'], date=parsed_doc['date'])
+
                     found += 1
-                    print(found)
-                    # stop rule for now
-                    if found > 100:
+                    if found % 30 == 0:
+                        print(doc['id'])
+                    #print(found)
+                    if found > 400:
                         break
-    writer.commit()
+    # implicit: writer.commit()
 
-
-    get_by_id()
+    from query import search_with_terms, get_by_id
+    print(search_with_terms("hello"))
+    print(get_by_id("31d8e582-3a3e-11e1-9d6b-29434ee99d6a"))
