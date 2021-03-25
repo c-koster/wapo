@@ -7,10 +7,9 @@ from flask import Flask, render_template
 
 import json
 import gzip
-
+from collect import search, get_by_id
 
 app = Flask(__name__)
-
 
 @app.route("/")
 def index():
