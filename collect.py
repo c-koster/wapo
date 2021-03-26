@@ -17,7 +17,10 @@ def parse_doc(doc):
     """
     # UNIX TIMESTAMP -> datetime object
     # (1325379405000)
-    date_pub_timestamp = str(dt.datetime.fromtimestamp(doc['published_date']//1000))
+    try:
+        date_pub_timestamp = str(dt.datetime.fromtimestamp(doc['published_date']//1000))
+    except:
+        print(doc)
     title = doc['title']
     author = doc['author']
     text = ""
@@ -28,6 +31,12 @@ def parse_doc(doc):
 
         except KeyError:
             continue
+
+        except TypeError:
+            print("{} - type error in doc".format(doc['id']))
+            continue
+
+
 
     newdict = {'id':doc['id'],'title':title,'author':author,'text':text,'date':date_pub_timestamp}
     return newdict
@@ -65,8 +74,7 @@ if __name__ == '__main__':
                     if found % 30 == 0:
                         print(doc['id'])
                     #print(found)
-                    if found > 400:
-                        break
+
     # implicit: writer.commit()
 
     from query import search_with_terms, get_by_id

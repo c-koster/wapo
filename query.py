@@ -20,7 +20,7 @@ def search_with_terms(text_terms):
         results = searcher.search(query)
         for r in results:
             d.append(r.fields())
-            print (r, r.score)
+            #print (r, r.score)
             # Was this results object created with terms=True?
             if results.has_matched_terms():
                 # What terms matched in the results?

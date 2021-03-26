@@ -1,1 +1,3 @@
 whoosh
+bs4
+lxml

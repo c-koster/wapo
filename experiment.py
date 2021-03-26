@@ -24,17 +24,18 @@
 
 # takeaways from foley meeting:
 #   there is a competiton in may
-#   I DO have natural labels, and as i suspected the labels look like this:
+#   I DO actually have natural labels, and as i suspected the labels look like this:
 #   {'similar': score, 'id_0':'12345','id_1':'12344'}
 #   I need a feature creation function for a PAIR of articles, and will learn more about feature engineering soon
 #
 
 # PART 2: maybe I get to writing some code?
 
-from collect import search_with_terms, get_by_id
+from query import search_with_terms, get_by_id
+from bs4 import BeautifulSoup as bs
 
 
-def extract_features(id1: str, id2: str) -> Any:
+def extract_features(id1, id2 ):
     """
     1. pull the text of both these documents from the index
     """
@@ -48,17 +49,48 @@ def extract_features(id1: str, id2: str) -> Any:
     # categorical stuff
     # TFIDF vectorizor dot product --> similarity
 
-
     pass # return a feature vector
 
 
-def join_features():
-    pass
-    
-
-
 def get_labels_list():
+
+
+    # build a dictionary to map query numbers to doc_ids
+    query_map = {}
+
+    with open("queries/newsir20-topics.xml",'r') as queries_file:
+
+        # Combine the lines in the list into a string
+        content = queries_file.readlines()
+        content = "".join(content)
+
+        # load the string into bs4
+        bs_content = bs(content, "lxml")
+        elems = bs_content.find_all("top")
+
+        for e in elems: # loop over the xml data that we found
+            id = e.find("docid").text # get the doc id
+            num_map = e.find("num").text[-4:-1] # pluck the query number from this string
+
+            # and add these to the dict so  num_map -> id
+            query_map[num_map] = id
+
+    labels = []
+    with open("queries/newsir20-background-linking.qrel",'r') as labels_file:
+        for line in labels_file:
+            line_stripped = line.strip().split(' ')
+
+            label = int(line_stripped[3]) > 0 # this is a true/false value
+            seed_article = query_map[line_stripped[0]] # get the article id from query number
+
+
+            labels.append({'similar': label, 'id_0': seed_article, 'id_1': line_stripped[2]})
+
     # i need a list of labels of the form
     # {'similar': score, 'id_0':'12345','id_1':'12344'}
 
-    pass
+    return labels
+
+labels = get_labels_list()
+for i in labels:
+    print(i)
