@@ -10,6 +10,12 @@ import datetime as dt
 from whoosh.index import create_in
 from whoosh.fields import Schema, TEXT, ID, DATETIME
 
+# parse_doc needs this
+from bs4 import BeautifulSoup as bs
+
+from tqdm import tqdm
+
+
 def parse_doc(doc):
     """
     Get a simplified doc dictionary and also run beautifulsoup on the text content
@@ -20,22 +26,24 @@ def parse_doc(doc):
     try:
         date_pub_timestamp = str(dt.datetime.fromtimestamp(doc['published_date']//1000))
     except:
-        print(doc)
+        date_pub_timestamp = None
+        #print(doc)
     title = doc['title']
     author = doc['author']
     text = ""
     for c in doc['contents']:
         try:
             if c['subtype'] == 'paragraph':
-                text += c['content'] + "\n\n" # NEEDS beautiful soup
+                soup = bs(c['content'],features='lxml')
+                clean_paragraph = soup.text
+                text += clean_paragraph + "\n\n" # NEEDS beautiful soup
 
         except KeyError:
             continue
 
         except TypeError:
-            print("{} - type error in doc".format(doc['id']))
+            #print("{} - type error in doc".format(doc['id']))
             continue
-
 
 
     newdict = {'id':doc['id'],'title':title,'author':author,'text':text,'date':date_pub_timestamp}
@@ -62,7 +70,7 @@ if __name__ == '__main__':
     with ix.writer() as writer:
         with gzip.open('TREC_Washington_Post_collection.v3.jl.gz', 'rt') as fp:
 
-            for line in fp:
+            for line in tqdm(fp):
                 doc = json.loads(line)
                 if doc['id'] in keep:
                     parsed_doc = parse_doc(doc)
@@ -71,8 +79,7 @@ if __name__ == '__main__':
                                         path=parsed_doc['id'], author=parsed_doc['author'], date=parsed_doc['date'])
 
                     found += 1
-                    if found % 30 == 0:
-                        print(doc['id'])
+                    #if found % 30 == 0: print(doc['id'])
                     #print(found)
 
     # implicit: writer.commit()
