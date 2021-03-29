@@ -119,7 +119,7 @@ def get_labels_list(query_map):
                 query_num = line_stripped[0]
                 seed_article = query_map[query_num] # get the article id from query number
 
-                labels.append({'similar': label, 'id_0': seed_article, 'id_1': line_stripped[2],'query_num':query_num})
+                labels.append({'similar': label, 'id_0': seed_article, 'id_1': line_stripped[2],'query':query_num})
 
     # i need a list of labels of the form
     # {'similar': score, 'id_0':'12345','id_1':'12344'}
@@ -165,41 +165,37 @@ def build_query_map(filenames):
 # the query-map files have different names, so pass in their names here
 query_map = build_query_map(["newsir18-background-linking-topics.xml","newsir19-entity-ranking-topics.xml","newsir20-topics.xml"])
 #print(query_map.keys())
+labels = get_labels_list(query_map)
+
+features = []
+groups = []
+
+#label_i = labels[0]
+#extract_features(label_i['id_0'], label_i['id_1'])
 
 
-# split query_map.keys() into a train cv and test
-from sklearn.model_selection import train_test_split
+for label_i in tqdm(labels):
+    feature_i = extract_features(label_i['id_0'], label_i['id_1'])
+    # the extract_features function sometimes fails the assert statements because
+    # I don't? have? all? the? articles? indexed?
+    features.append(feature_i)
+    groups.append(label_i['query'])
+
+
+assert labels[0]['query'] == groups[0]
+# use this group shuffle thing to get a train cv and test split
+for i in zip(labels,features,groups):
+    if i[1] == False:
+        print(i)
+
+"""
+from sklearn.model_selection import GroupShuffleSplit
 
 RANDOM_SEED = 123
 
-queries_all = list(query_map.keys())
+gss = GroupShuffleSplit(n_splits=2, train_size=.7, random_state=RANDOM_SEED)
 
-# separate train/validate from test set
-queries_tv, queries_test = train_test_split(
-    queries_all, train_size=0.75, shuffle=True, random_state=RANDOM_SEED
-)
-
-# and thenn separate train and validate queries
-queries_train, queries_vali = train_test_split(
-    queries_tv, train_size=0.66, shuffle=True, random_state=RANDOM_SEED
-)
-
-
-labels = get_labels_list(query_map)
-features = []
-# the extract_features function usually fails the assert statements because
-# I don't? have? all? the? articles? indexed?
-label_i = labels[0]
-#extract_features(label_i['id_0'], label_i['id_1'])
-
-count_true = 0
-count_false = 0
-for label_i in tqdm(labels):
-    p = extract_features(label_i['id_0'], label_i['id_1'])
-    if p:
-        if label_i['similar']:
-            count_true +=1
-        else:
-            count_false +=1
-
-print("usable pairs: {} positives and {} negatives out of {} total labels".format(count_true,count_false,len(labels)))
+x_tv, y_test = gss.split(labels, features, groups)
+"""
+#print(features)
+#print(groups)
