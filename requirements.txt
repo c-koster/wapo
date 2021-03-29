@@ -2,3 +2,4 @@ whoosh
 bs4
 lxml
 distance
+sklearn

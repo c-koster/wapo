@@ -102,11 +102,29 @@ def extract_features(id1, id2):
     }
     return d # return a dict with all the relevant features we extracted
 
-def get_labels_list(filenames):
+def get_labels_list(query_map):
     # build a dictionary to map query numbers to doc_ids
-    query_map = {}
     labels = []
-    count_positives = 0
+
+
+    for i in ["18","19","20"]: # for each of the years
+        with open("queries/newsir{}-background-linking.qrel".format(i),'r') as labels_file:
+            for line in labels_file:
+                line_stripped = line.strip().split(" ")
+
+                label = int(line_stripped[3]) > 0 # this is a true/false value
+                query_num = line_stripped[0]
+                seed_article = query_map[query_num] # get the article id from query number
+
+                labels.append({'similar': label, 'id_0': seed_article, 'id_1': line_stripped[2],'query_num':query_num})
+
+    # i need a list of labels of the form
+    # {'similar': score, 'id_0':'12345','id_1':'12344'}
+    #print(count_positives)
+    return labels
+
+def build_query_map(filenames):
+    query_map = {}
 
     for filename in filenames:
         with open("queries/{}".format(filename),'r') as queries_file:
@@ -126,22 +144,7 @@ def get_labels_list(filenames):
                 # and add these to the dict so  num_map -> id
                 query_map[num_map] = id
 
-    for i in ["18","19","20"]: # for each of the years
-        with open("queries/newsir{}-background-linking.qrel".format(i),'r') as labels_file:
-            for line in labels_file:
-                line_stripped = line.strip().split(" ")
-
-                label = int(line_stripped[3]) > 0 # this is a true/false value
-                seed_article = query_map[line_stripped[0]] # get the article id from query number
-
-                labels.append({'similar': label, 'id_0': seed_article, 'id_1': line_stripped[2]})
-
-    # i need a list of labels of the form
-    # {'similar': score, 'id_0':'12345','id_1':'12344'}
-    #print(count_positives)
-    return labels
-
-
+    return query_map
 
 
 # PART 3: train a classifier. Here's how it's going to look:
@@ -157,8 +160,34 @@ def get_labels_list(filenames):
 
 
 # the query-map files have different names, so pass in their names here
-labels = get_labels_list(["newsir18-background-linking-topics.xml","newsir19-entity-ranking-topics.xml","newsir20-topics.xml"])
+query_map = build_query_map(["newsir18-background-linking-topics.xml","newsir19-entity-ranking-topics.xml","newsir20-topics.xml"])
+#print(query_map.keys())
+
+
+
+# split query_map.keys() into a train cv and test
+from sklearn.model_selection import train_test_split
+
+RANDOM_SEED = 123
+
+queries_all = list(query_map.keys())
+
+# separate train/validate from test set
+queries_tv, queries_test = train_test_split(
+    queries_all, train_size=0.75, shuffle=True, random_state=RANDOM_SEED
+)
+
+# and thenn separate train and validate queries
+queries_train, queries_vali = train_test_split(
+    queries_tv, train_size=0.66, shuffle=True, random_state=RANDOM_SEED
+)
+
+
+exit(0)
+labels = get_labels_list(query_map)
 features = []
-label_i = labels[4030]
-features.append(extract_features(label_i['id_0'], label_i['id_1']))
-print(features)
+# the extract_features function usually fails the assert statements because
+# I don't? have? all? the? articles? indexed?
+for label_i in labels:
+    features.append(extract_features(label_i['id_0'], label_i['id_1']))
+    print(features)
