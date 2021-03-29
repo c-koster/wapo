@@ -36,6 +36,7 @@ from bs4 import BeautifulSoup as bs
 import datetime as dt
 
 from distance import jaccard
+from tqdm import *
 
 assert jaccard("ABC","ABD") == 0.5
 
@@ -69,8 +70,10 @@ def extract_features(id1, id2):
     """
     a1 = get_by_id(id1)
     a2 = get_by_id(id2)
-    assert a1
-    assert a2
+    if (a1 == None or a2 == None):
+        return False
+    else:
+        return True
 
     # same author?
     same_author = (a1['author'] == a2['author'])
@@ -164,7 +167,6 @@ query_map = build_query_map(["newsir18-background-linking-topics.xml","newsir19-
 #print(query_map.keys())
 
 
-
 # split query_map.keys() into a train cv and test
 from sklearn.model_selection import train_test_split
 
@@ -183,11 +185,21 @@ queries_train, queries_vali = train_test_split(
 )
 
 
-exit(0)
 labels = get_labels_list(query_map)
 features = []
 # the extract_features function usually fails the assert statements because
 # I don't? have? all? the? articles? indexed?
-for label_i in labels:
-    features.append(extract_features(label_i['id_0'], label_i['id_1']))
-    print(features)
+label_i = labels[0]
+#extract_features(label_i['id_0'], label_i['id_1'])
+
+count_true = 0
+count_false = 0
+for label_i in tqdm(labels):
+    p = extract_features(label_i['id_0'], label_i['id_1'])
+    if p:
+        if label_i['similar']:
+            count_true +=1
+        else:
+            count_false +=1
+
+print("usable pairs: {} positives and {} negatives out of {} total labels".format(count_true,count_false,len(labels)))
