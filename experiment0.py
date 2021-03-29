@@ -29,28 +29,78 @@
 #   I need a feature creation function for a PAIR of articles, and will learn more about feature engineering soon
 #
 
-# PART 2: maybe I get to writing some code?
+# PART 2: maybe I get to writing some code
 
 from query import search_with_terms, get_by_id
 from bs4 import BeautifulSoup as bs
+import datetime as dt
+
+from distance import jaccard
+
+assert jaccard("ABC","ABD") == 0.5
+
+
+from sklearn.feature_extraction.text import CountVectorizer
+
+
+# get a list of word_features from larger text block
+word_features = CountVectorizer(
+    strip_accents="unicode",
+    lowercase=True,
+    ngram_range=(1, 1), # try 1, 2 or 1, 3 for larger word couplings
+)
+
+text_to_words = word_features.build_analyzer()
+
 
 
 def extract_features(id1, id2):
     """
     1. pull the text of both these documents from the index
+
+    2. ensure they are not None (meaning the referenced id is not in the db)
+
+    3. then extract some features -- see foley's lectures on feature engineering
+    but the idea is to find things which might predict article similarity:
+        - same author
+        - jaccard index
+        - difference in time
+        - tdfidf vector dot product
     """
     a1 = get_by_id(id1)
     a2 = get_by_id(id2)
-    # do some text magic
+    assert a1
+    assert a2
 
     # same author?
-    # size of union of their features (jaccard index [0,1])
+    same_author = (a1['author'] == a2['author'])
+
     # distance in time
+    time1 = dt.datetime.strptime(a1['date'], '%Y-%m-%d %H:%M:%S')
+    time2 = dt.datetime.strptime(a2['date'], '%Y-%m-%d %H:%M:%S')
+    diff_time = (time2 - time1).days
+
+    # size of union of their features (jaccard index [0,1]):
+    # formally |A i B| / |A u B|
+    a1_title = text_to_words(a1['title'])
+    a2_title = text_to_words(a2['title'])
+
+    jaccard_title = 1 - jaccard(a1_title, a2_title)
+
+    a1_text = text_to_words(a1['content'])
+    a2_text = text_to_words(a2['content'])
+
+    jaccard_full = 1 - jaccard(a1_text, a2_text)
+
+
     # categorical stuff
     # TFIDF vectorizor dot product --> similarity
 
-    pass # return a feature vector
-
+    d = {
+    'jaccard_full': jaccard_full, 'diff_time': diff_time,
+    'same_author': same_author, 'jaccard_title': jaccard_title
+    }
+    return d # return a dict with all the relevant features we extracted
 
 def get_labels_list(filenames):
     # build a dictionary to map query numbers to doc_ids
@@ -70,7 +120,7 @@ def get_labels_list(filenames):
             elems = bs_content.find_all("top")
 
             for e in elems: # loop over the xml data that we found
-                id = e.find("docid").text # get the doc id
+                id = e.find("docid").text.strip(" ") # get the doc id
                 num_map = e.find("num").text[-4:-1] # pluck the query number from this string
 
                 # and add these to the dict so  num_map -> id
@@ -79,7 +129,7 @@ def get_labels_list(filenames):
     for i in ["18","19","20"]: # for each of the years
         with open("queries/newsir{}-background-linking.qrel".format(i),'r') as labels_file:
             for line in labels_file:
-                line_stripped = line.strip().split(' ')
+                line_stripped = line.strip().split(" ")
 
                 label = int(line_stripped[3]) > 0 # this is a true/false value
                 seed_article = query_map[line_stripped[0]] # get the article id from query number
@@ -88,8 +138,27 @@ def get_labels_list(filenames):
 
     # i need a list of labels of the form
     # {'similar': score, 'id_0':'12345','id_1':'12344'}
-    print(count_positives)
+    #print(count_positives)
     return labels
 
-labels = get_labels_list(["newsir18-background-linking-topics.xml","newsir19-entity-ranking-topics.xml","newsir20-topics.xml"])
+
+
+
+# PART 3: train a classifier. Here's how it's going to look:
+
+
+# 1. first I need train_cv_test splits, but it's kind of cheating if I valiidate or test
+#   on the same queries i'll be trainning with. so I need to randomly sample by
+#   queries and get labels/features from there. Or as foley suggested, it might
+
+# 2. get my list in terms of X and y's
+
+# 3. try a few models
+
+
 # the query-map files have different names, so pass in their names here
+labels = get_labels_list(["newsir18-background-linking-topics.xml","newsir19-entity-ranking-topics.xml","newsir20-topics.xml"])
+features = []
+label_i = labels[4030]
+features.append(extract_features(label_i['id_0'], label_i['id_1']))
+print(features)
