@@ -1,7 +1,5 @@
 """
-Updated Foley's collect code to write index files into whoosh's search system.
-Also I included here the two functions I'll need to search through these articles.
-
+I re-worked Foley's collect code to write index files into whoosh's search system.
 """
 import gzip, json
 import os.path
@@ -11,79 +9,74 @@ from whoosh.index import create_in
 from whoosh.fields import Schema, TEXT, ID, DATETIME
 
 # parse_doc needs this
-from bs4 import BeautifulSoup as bs
+import typing as T
+from dataclasses import dataclass, field
+
 
 from tqdm import tqdm
 
 
-def parse_doc(doc):
+@dataclass # i kept this aroundd to easily deal with null or missing values
+class WapoArticle:
+    id: str
+    title: str
+    body: str
+    published_date: int
+    kicker: T.Optional[str] = None
+    url: T.Optional[str] = None
+    author: T.Optional[str] = None
+    kind: T.Optional[str] = None
+
+
+def create_index():
     """
-    Get a simplified doc dictionary and also run beautifulsoup on the text content
-    to get all the HTML yuck out of there.
+
+
     """
-    # UNIX TIMESTAMP -> datetime object
-    # (1325379405000)
-    try:
-        date_pub_timestamp = str(dt.datetime.fromtimestamp(doc['published_date']//1000))
-    except:
-        date_pub_timestamp = None
-        #print(doc)
-    title = doc['title']
-    author = doc['author']
-    text = ""
-    for c in doc['contents']:
-        try:
-            if c['subtype'] == 'paragraph':
-                soup = bs(c['content'],features='lxml')
-                clean_paragraph = soup.text
-                text += clean_paragraph + "\n\n" # NEEDS beautiful soup
-
-        except KeyError:
-            continue
-
-        except TypeError:
-            #print("{} - type error in doc".format(doc['id']))
-            continue
-
-
-    newdict = {'id':doc['id'],'title':title,'author':author,'text':text,'date':date_pub_timestamp}
-    return newdict
-
-
-if __name__ == '__main__':
-
     if not os.path.exists("indexdir"):
         os.mkdir("indexdir")
 
     schema = Schema(title = TEXT(stored=True), path = ID(stored=True),
                     author= TEXT(stored=True), content = TEXT(stored=True),
-                    date  = TEXT(stored=True))
+                    date  = TEXT(stored=True), kind = TEXT(stored=True),
+                    kicker= TEXT(stored=True))
 
     ix = create_in("indexdir", schema)
+    written_ids = set()
 
-    keep = set()
-    with open('queries/all.ids', 'r') as fp:
-        for line in fp:
-            keep.add(line.strip())
+    # enter into the writer and also the articles file
+    with gzip.open("pool.jsonl.gz") as fp:
+        with ix.writer() as writer:
+            for line in tqdm(fp, total=160):
+                query = json.loads(line)
+                qid = query["qid"]
+                qdoc = WapoArticle(**query["doc"])
+                if qdoc.id not in written_ids:
+                    written_ids.add(qdoc.id)
+                    writer.add_document(title=qdoc.title, content=qdoc.body,
+                                        path=qdoc.id, author=qdoc.author,
+                                        date=str(dt.datetime.fromtimestamp(qdoc.published_date//1000)),
+                                        kicker=qdoc.kicker,kind=qdoc.kind
+                    )
 
-    found = 0
-    with ix.writer() as writer:
-        with gzip.open('TREC_Washington_Post_collection.v3.jl.gz', 'rt') as fp:
+                for entry in query["pool"]:
+                    doc = WapoArticle(**entry["doc"])
+                    if doc.id not in written_ids:
+                        written_ids.add(doc.id)
+                        writer.add_document(title=doc.title, content=doc.body,
+                                            path=doc.id, author=doc.author,
+                                            date=str(dt.datetime.fromtimestamp(doc.published_date//1000)),
+                                            kicker=doc.kicker,kind=doc.kind
+                        )
 
-            for line in tqdm(fp):
-                doc = json.loads(line)
-                if doc['id'] in keep:
-                    parsed_doc = parse_doc(doc)
+    print("done!") # implicit: writer.commit() and fp.close()
 
-                    writer.add_document(title=parsed_doc['title'], content=parsed_doc['text'],
-                                        path=parsed_doc['id'], author=parsed_doc['author'], date=parsed_doc['date'])
 
-                    found += 1
-                    #if found % 30 == 0: print(doc['id'])
-                    #print(found)
+if __name__ == '__main__':
 
-    # implicit: writer.commit()
+    create_index()
 
+    print("\n\nTrying a few queries:")
     from query import search_with_terms, get_by_id
     print(search_with_terms("hello"))
     print(get_by_id("31d8e582-3a3e-11e1-9d6b-29434ee99d6a"))
