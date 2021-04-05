@@ -44,35 +44,33 @@ def create_index():
     ix = create_in("indexdir", schema)
     written_ids = set()
 
-    writer = ix.writer() # enter into the writer and also the articles file
-    with gzip.open("pool.jsonl.gz") as fp:
+    with ix.writer() as writer: # enter into the writer and also the articles file
+        with gzip.open("pool.jsonl.gz") as fp:
 
-        for line in tqdm(fp, total=10):
+            for line in tqdm(fp, total=160):
 
-            query = json.loads(line)
-            qid = query["qid"]
-            qdoc = WapoArticle(**query["doc"])
-            if qdoc.id not in written_ids:
-                written_ids.add(qdoc.id)
-                writer.add_document(title=qdoc.title, content=qdoc.body,
-                                    path=qdoc.id, author=qdoc.author,
-                                    date=str(dt.datetime.fromtimestamp(qdoc.published_date//1000)),
-                                    kicker=qdoc.kicker,kind=qdoc.kind
-                )
-
-            for entry in query["pool"]:
-                doc = WapoArticle(**entry["doc"])
-                if doc.id not in written_ids:
-                    written_ids.add(doc.id)
-                    writer.add_document(title=doc.title, content=doc.body,
-                                        path=doc.id, author=doc.author,
-                                        date=str(dt.datetime.fromtimestamp(doc.published_date//1000)),
-                                        kicker=doc.kicker,kind=doc.kind
+                query = json.loads(line)
+                qid = query["qid"]
+                qdoc = WapoArticle(**query["doc"])
+                if qdoc.id not in written_ids:
+                    written_ids.add(qdoc.id)
+                    writer.add_document(title=qdoc.title, content=qdoc.body,
+                                        path=qdoc.id, author=qdoc.author,
+                                        date=str(dt.datetime.fromtimestamp(qdoc.published_date//1000)),
+                                        kicker=qdoc.kicker,kind=qdoc.kind
                     )
-        print("end of fp loop.")
-    writer.commit()
-    print("closed the writer.")
 
+                for entry in query["pool"]:
+                    doc = WapoArticle(**entry["doc"])
+                    if doc.id not in written_ids:
+                        written_ids.add(doc.id)
+                        writer.add_document(title=doc.title, content=doc.body,
+                                            path=doc.id, author=doc.author,
+                                            date=str(dt.datetime.fromtimestamp(doc.published_date//1000)),
+                                            kicker=doc.kicker,kind=doc.kind
+                        )
+        print("end of fp loop.")
+    print("closed the writer.")
 
 if __name__ == '__main__':
 
