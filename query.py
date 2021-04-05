@@ -8,11 +8,46 @@ from whoosh.qparser import QueryParser
 from whoosh.index import open_dir
 from functools import lru_cache # foley caching magic
 
+from dataclasses import dataclass, field
+import typing as T
+
 ix = open_dir("indexdir")
 searcher = ix.searcher()
 # so as it turns out -- the open and closing of a searcher are quite computationally expensive
 # defining a searcher as a global variable here speeds up feature extraction of 42,000 pairs
 # from 9 hours to about 10 seconds
+
+
+
+
+@dataclass # i can't escape the ORM
+class WapoArticle:
+    id: str
+    title: str
+    body: str
+    published_date: int
+    kicker: T.Optional[str] = None
+    url: T.Optional[str] = None
+    author: T.Optional[str] = None
+    kind: T.Optional[str] = None
+
+    def search_from_seed(self):
+        """
+        uses parameters from self to return the top 100 queries
+        """
+        pass
+
+
+    def json_repr(self):
+        """
+
+        """
+        pass
+
+    def write(self):
+
+        pass
+
 
 
 def search_with_terms(text_terms):

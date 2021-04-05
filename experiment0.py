@@ -38,6 +38,9 @@ import datetime as dt
 from distance import jaccard
 from tqdm import *
 
+# nice typing!
+from typing import Dict, Any, List, Tuple
+
 assert jaccard("ABC","ABD") == 0.5
 
 
@@ -71,7 +74,9 @@ def extract_features(id1, id2):
     a1 = get_by_id(id1)
     a2 = get_by_id(id2)
     if (a1 == None or a2 == None):
-        return False
+        return None
+        # None -- compparison vector is noot possible beecause one or two
+        # of the search-index results came up empty
     else:
         return True
 
@@ -95,7 +100,6 @@ def extract_features(id1, id2):
 
     jaccard_full = 1 - jaccard(a1_text, a2_text)
 
-
     # categorical stuff
     # TFIDF vectorizor dot product --> similarity
 
@@ -105,9 +109,12 @@ def extract_features(id1, id2):
     }
     return d # return a dict with all the relevant features we extracted
 
-def get_labels_list(query_map):
+def get_labels_dict():
+    """
+    
+    """
     # build a dictionary to map query numbers to doc_ids
-    labels = []
+    labels = {}
 
 
     for i in ["18","19","20"]: # for each of the years
@@ -116,17 +123,23 @@ def get_labels_list(query_map):
                 line_stripped = line.strip().split(" ")
 
                 label = int(line_stripped[3]) > 0 # this is a true/false value
+
                 query_num = line_stripped[0]
-                seed_article = query_map[query_num] # get the article id from query number
+                right_id = line_stripped[2]
+                #
+                if query_num not in labels:
+                    labels[query_num] = {}
+                labels[query_num][right_id] = label
 
-                labels.append({'similar': label, 'id_0': seed_article, 'id_1': line_stripped[2],'query':query_num})
-
-    # i need a list of labels of the form
+    # i will need a list of labels of the form
     # {'similar': score, 'id_0':'12345','id_1':'12344'}
-    #print(count_positives)
     return labels
 
 def build_query_map(filenames):
+    """
+    This gets you a dictionary which maps queries to document ids, to extract features
+    from the left article of each label/ranking.
+    """
     query_map = {}
 
     for filename in filenames:
@@ -150,52 +163,83 @@ def build_query_map(filenames):
     return query_map
 
 
+def create_X_and_y(qids: List[str]) -> Tuple[List[Dict[str, Any]], List[bool]]:
+    """
+    Takes as input a list of queries and returns two lists of extracted features
+    and labels
+    """
+    examples = []
+    ys = []
+    for qid in qids: # loop over the input list
+
+        left = query_to_docid[qid] # convert query id into a document id
+
+        for docid, label in query_to_label[qid].items():
+
+            ys.append(label)
+            examples.append(extract_features(left, docid))
+    return (examples, ys)
+
 # PART 3: train a classifier. Here's how it's going to look:
 
 
 # 1. first I need train_cv_test splits, but it's kind of cheating if I valiidate or test
 #   on the same queries i'll be trainning with. so I need to randomly sample by
-#   queries and get labels/features from there. Or as foley suggested, it might
+#   queries and get labels/features from there
 
-# 2. get my list in terms of X and y's
 
-# 3. try a few models
+# 2. get my list in terms of X and y's -- feature extraction helper methods below:
+
+WORD_REGEX = re.compile(r"\w+")
+
+
+def tokenize(input: str) -> T.List[str]:
+    return WORD_REGEX.split(input.lower())
+
+
+def safe_mean(input: T.List[float]) -> float:
+    if len(input) == 0:
+        return 0.0
+    return sum(input) / len(input)
+
+
+def jaccard(lhs: T.Set[str], rhs: T.Set[str]) -> float:
+    isect_size = sum(1 for x in lhs if x in rhs)
+    union_size = len(lhs.union(rhs))
+    return isect_size / union_size
+
 
 
 # the query-map files have different names, so pass in their names here
-query_map = build_query_map(["newsir18-background-linking-topics.xml","newsir19-entity-ranking-topics.xml","newsir20-topics.xml"])
-#print(query_map.keys())
-labels = get_labels_list(query_map)
+query_to_docid = build_query_map(["newsir18-background-linking-topics.xml","newsir19-entity-ranking-topics.xml","newsir20-topics.xml"])
 
-features = []
-groups = []
-
-#label_i = labels[0]
-#extract_features(label_i['id_0'], label_i['id_1'])
+query_to_label = get_labels_dict()
+# the query_to_docid file
 
 
-for label_i in tqdm(labels):
-    feature_i = extract_features(label_i['id_0'], label_i['id_1'])
-    # the extract_features function sometimes fails the assert statements because
-    # I don't? have? all? the? articles? indexed?
-    features.append(feature_i)
-    groups.append(label_i['query'])
 
 
-assert labels[0]['query'] == groups[0]
-# use this group shuffle thing to get a train cv and test split
-for i in zip(labels,features,groups):
-    if i[1] == False:
-        print(i)
 
-"""
-from sklearn.model_selection import GroupShuffleSplit
+queries = list(query_to_label.keys()) # train_test_split on the queries file
+
+from sklearn.model_selection import train_test_split
 
 RANDOM_SEED = 123
 
-gss = GroupShuffleSplit(n_splits=2, train_size=.7, random_state=RANDOM_SEED)
+# split the queries into three groups--
+# test set: 30%
+# vali set:
+# training set:
 
-x_tv, y_test = gss.split(labels, features, groups)
-"""
-#print(features)
-#print(groups)
+tv_queries, test_queries = train_test_split(queries,random_state=RANDOM_SEED,)
+train_queries, vali_queries = train_test_split(tv_queries,random_state=RANDOM_SEED)
+
+# then using the queries lists make X and y vectors for each
+ex_train, y_train = create_X_and_y(train_queries)
+ex_vali, y_vali   = create_X_and_y(vali_queries)
+
+
+
+exit(0)
+for ex_i in ex_train + ex_vali:
+    assert(ex_i != None)
