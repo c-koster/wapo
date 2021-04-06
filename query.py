@@ -22,7 +22,13 @@ searcher = ix.searcher()
 # helpers and constants for the search_with_terms function
 
 #from experiment1 import extract_features
-stopwords = ["the"]
+stopwords = []
+with open('STOPWORDS.txt', 'r') as wordfile:
+    lines = wordfile.readlines()
+    [stopwords.append(a.strip()) for a in lines]
+
+stopwords = set(stopwords)
+print(stopwords)
 NUM_TERMS = 50
 
 from sklearn.feature_extraction.text import CountVectorizer

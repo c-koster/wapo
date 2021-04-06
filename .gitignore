@@ -3,3 +3,4 @@ indexdir/*
 *.jsonl
 *.gz
 *.joblib
+STOPWORDS.txt
