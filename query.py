@@ -21,7 +21,7 @@ searcher = ix.searcher()
 
 # helpers and constants for the search_with_terms function
 
-from experiment1 import extract_features
+#from experiment1 import extract_features
 stopwords = ["the"]
 NUM_TERMS = 50
 
