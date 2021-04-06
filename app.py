@@ -10,6 +10,16 @@ from query import search_with_terms, get_by_id
 
 app = Flask(__name__)
 
+# fetch everything I need to use for my sklearn model
+from joblib import load
+try:
+    regressor = load('model.joblib')
+
+from experiment1 import feature_extractor # don't do this... experiment 1 needs to be in a
+# if __name__ == "__main__" thing because right now it'll just run
+
+# how do I fetch this "pool score" thing?
+
 @app.route("/")
 def index():
     # get a list of article id and pass them into the index template
@@ -32,7 +42,8 @@ def article(article_id):
     links = [{"id":"bcdbc240-30d3-11e1-8c61-c365ccf404c5"}, {"id":"74a81038-2da8-11e1-8af5-ec9a452f0164"},
              {"id":"ca152d58-3adc-11e1-9ff8-fab9392b31bf"}, {"id":"93c63d52-3c74-11e1-af18-7ec0de5907e2"}]
 
-    links = search_with_terms(doc['title'])
+    links = search_with_terms(doc['title'],doc['content'])
+    # question: does links give me access to the
 
     # 4. then apply *my model* to the search results and rank them in decreasing order of relevance
     # ( this will be the big assignment )

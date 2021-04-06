@@ -2,3 +2,4 @@ queries/*
 indexdir/*
 *.jsonl
 *.gz
+*.joblib

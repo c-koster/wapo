@@ -111,7 +111,7 @@ def extract_features(id1, id2):
 
 def get_labels_dict():
     """
-    
+
     """
     # build a dictionary to map query numbers to doc_ids
     labels = {}
@@ -243,3 +243,6 @@ ex_vali, y_vali   = create_X_and_y(vali_queries)
 exit(0)
 for ex_i in ex_train + ex_vali:
     assert(ex_i != None)
+
+
+# i'm going to use experiment 1 from now on... better setup

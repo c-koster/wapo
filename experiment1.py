@@ -33,6 +33,31 @@ def jaccard(lhs: T.Set[str], rhs: T.Set[str]) -> float:
     return isect_size / union_size
 
 
+def extract_features(left: T.Dict[str,T.Any],right: T.Dict[str,T.Any]) -> T.Dict[str,T.Any]:
+    qdoc = WapoArticle(**left)
+    doc = WapoArticle(**right)
+
+    q_title = set(tokenize(qdoc.title))
+    q_words = tokenize(qdoc.body)
+    q_uniq_words = set(q_words)
+
+    doc_title = set(tokenize(doc.title))
+    words = tokenize(doc.body)
+    uniq_words = set(words)
+    avg_word_len = safe_mean([len(w) for w in words])
+    features = {
+        "time-delta": qdoc.published_date - doc.published_date,
+        "title-sim": jaccard(q_title, doc_title),
+        "title-body-sim": jaccard(q_title, uniq_words),
+        "title-body-sim-rev": jaccard(doc_title, q_uniq_words),
+        "avg_word_len": avg_word_len,
+        "length": len(words),
+        "uniq_words": len(uniq_words),
+    }
+    return features
+
+
+
 @dataclass
 class WapoArticle:
     id: str
@@ -76,18 +101,15 @@ with gzip.open("pool.jsonl.gz") as fp:
     for line in tqdm(fp, total=160):
         query = json.loads(line)
         qid = query["qid"]
-        qdoc = WapoArticle(**query["doc"])
-
-        q_title = set(tokenize(qdoc.title))
-        q_words = tokenize(qdoc.body)
-        q_uniq_words = set(q_words)
+        qdoc = query["doc"]
 
         data = RankingData(qid)
 
         for entry in query["pool"]:
+            features = extract_features(left=qdoc, right=entry["doc"])
+            """
             doc = WapoArticle(**entry["doc"])
             doc_title = set(tokenize(doc.title))
-            truth = entry["truth"]
             words = tokenize(doc.body)
             uniq_words = set(words)
             avg_word_len = safe_mean([len(w) for w in words])
@@ -104,9 +126,12 @@ with gzip.open("pool.jsonl.gz") as fp:
                 "length": len(words),
                 "uniq_words": len(uniq_words),
             }
+            """
+            features["pool-score"] = entry["pool-score"]
+            truth = entry["truth"]
 
             data.examples.append(features)
-            data.docids.append(doc.id)
+            data.docids.append(entry['doc']['id'])
             data.labels.append(truth)
 
         qids_to_data[qid] = data
@@ -155,7 +180,8 @@ print(
     ),
 )
 
-
+from joblib import dump
+dump(m, 'model.joblib')
 
 def compute_query_APs(dataset: T.List[str]) -> T.List[float]:
     ap_scores = []
