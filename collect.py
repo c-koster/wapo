@@ -6,7 +6,7 @@ import os.path
 import datetime as dt
 
 from whoosh.index import create_in
-from whoosh.fields import Schema, TEXT, ID, DATETIME
+from whoosh.fields import Schema, TEXT, ID, NUMERIC
 
 # parse_doc needs this
 import typing as T
@@ -37,16 +37,15 @@ def create_index():
         os.mkdir("indexdir")
 
     schema = Schema(title = TEXT(stored=True), path = ID(stored=True),
-                    author= TEXT(stored=True), content = TEXT(stored=True),
-                    date  = TEXT(stored=True), kind = TEXT(stored=True),
+                    author= TEXT(stored=True), body = TEXT(stored=True),
+                    published_date = NUMERIC(stored=True), kind = TEXT(stored=True),
                     kicker= TEXT(stored=True))
 
     ix = create_in("indexdir", schema)
     written_ids = set()
 
-    with ix.writer() as writer: # enter into the writer and also the articles file
+    with ix.writer(procs=4,limitmb=4096,multisegment=True) as writer: # enter into the writer and also the articles file
         with gzip.open("pool.jsonl.gz") as fp:
-
             for line in tqdm(fp, total=160):
 
                 query = json.loads(line)
@@ -54,9 +53,9 @@ def create_index():
                 qdoc = WapoArticle(**query["doc"])
                 if qdoc.id not in written_ids:
                     written_ids.add(qdoc.id)
-                    writer.add_document(title=qdoc.title, content=qdoc.body,
+                    writer.add_document(title=qdoc.title, body=qdoc.body,
                                         path=qdoc.id, author=qdoc.author,
-                                        date=str(dt.datetime.fromtimestamp(qdoc.published_date//1000)),
+                                        published_date=qdoc.published_date//1000,
                                         kicker=qdoc.kicker,kind=qdoc.kind
                     )
 
@@ -64,9 +63,9 @@ def create_index():
                     doc = WapoArticle(**entry["doc"])
                     if doc.id not in written_ids:
                         written_ids.add(doc.id)
-                        writer.add_document(title=doc.title, content=doc.body,
+                        writer.add_document(title=doc.title, body=doc.body,
                                             path=doc.id, author=doc.author,
-                                            date=str(dt.datetime.fromtimestamp(doc.published_date//1000)),
+                                            published_date=doc.published_date//1000,
                                             kicker=doc.kicker,kind=doc.kind
                         )
         print("end of fp loop.")
@@ -78,5 +77,5 @@ if __name__ == '__main__':
 
     print("\n\nTrying a few queries:")
     from query import search_with_terms, get_by_id
-    print(search_with_terms("hello"))
+    print(search_with_terms("hello","body"))
     print(get_by_id("31d8e582-3a3e-11e1-9d6b-29434ee99d6a"))

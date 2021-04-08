@@ -8,45 +8,52 @@ import json
 import gzip
 from query import search_with_terms, get_by_id
 
-app = Flask(__name__)
 
 # fetch everything I need to use for my sklearn model
+# these imports are for implementing a live model --
+from experiment1 import extract_features
+from sklearn.feature_extraction import DictVectorizer
 from joblib import load
-try:
-    regressor = load('model.joblib')
-
-from experiment1 import feature_extractor # don't do this... experiment 1 needs to be in a
-# if __name__ == "__main__" thing because right now it'll just run
-
+numberer = DictVectorizer(sort=True, sparse=False)
+regressor = load('model.joblib')
 # how do I fetch this "pool score" thing?
+
+app = Flask(__name__)
+
 
 @app.route("/")
 def index():
     # get a list of article id and pass them into the index template
-    links = search_with_terms("hello")
-    print(links)
-
+    base_query = "health wellness smoothie vegan vegan"
+    links,pools = search_with_terms("this gets ignored",base_query)
     return render_template("index.html",links=links)
 
 
 @app.route("/article/<string:article_id>")
 def article(article_id):
     # 1. query using article_id on the article i'm looking for
-    doc = get_by_id(article_id)
-
+    qdoc = get_by_id(article_id)
     # 2. check if we found the article
-    if doc == None: # if we didn't find it render a 404 page
+    if qdoc == None: # if we didn't find it render a 404 page
         return render_template("error.html",msg={'code':404,'text':'404 not found'})
 
     # 3. if we *did* find it, search for some relevant articles using Whoosh
-    links = [{"id":"bcdbc240-30d3-11e1-8c61-c365ccf404c5"}, {"id":"74a81038-2da8-11e1-8af5-ec9a452f0164"},
-             {"id":"ca152d58-3adc-11e1-9ff8-fab9392b31bf"}, {"id":"93c63d52-3c74-11e1-af18-7ec0de5907e2"}]
-
-    links = search_with_terms(doc['title'],doc['content'])
+    links, pools = search_with_terms(qdoc['title'],qdoc['body'])
     # question: does links give me access to the
+    print(type(links))
 
     # 4. then apply *my model* to the search results and rank them in decreasing order of relevance
     # ( this will be the big assignment )
+    features_X = []
+    for doc, score in zip(links, pools):
+        print(doc[0])
+        f = extract_features(qdoc,doc[0])
+        f.update({'pool-score':score})
+        features_X.append(f)
+
+    X = numberer.fit_transform(features_X)
+    y_pred = regressor.predict(X)
+    print(y_pred)
 
     # 5. Finally use the links and article to render the page.
-    return render_template("article.html",article=doc,links=links)
+    return render_template("article.html",article=doc[0],links=[l[0] for l in links])

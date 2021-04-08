@@ -28,7 +28,6 @@ with open('STOPWORDS.txt', 'r') as wordfile:
     [stopwords.append(a.strip()) for a in lines]
 
 stopwords = set(stopwords)
-print(stopwords)
 NUM_TERMS = 50
 
 from sklearn.feature_extraction.text import CountVectorizer
@@ -47,6 +46,9 @@ def tokenize(input_text: str) -> List[str]:
 class WeightedTerm:
     weight: float
     token: str
+
+    def __str__(self) -> str:
+        return self.token + "^"+ str(self.weight)[:5]
 
 
 def normalize(wts: List[WeightedTerm]) -> List[WeightedTerm]:
@@ -68,7 +70,7 @@ def search_with_terms(title, body):
     # 1. tokenize for all the terms -- does it help at all to use the title?
     body_terms = tokenize(body)
 
-    # (need me foor normalization)
+    # (need me for normalization)
     length = len(body_terms)
 
     # 2. count em up with this dictionary-like counter object
@@ -88,18 +90,24 @@ def search_with_terms(title, body):
     # most_important is a list of type WeightedTerm
 
     # 5. run the search using (most_important) terms
-    wei_query = None
+    wei_query = ""
+    for wt in most_important:
+        wei_query += str(wt) + " OR "
+    wei_query = wei_query[:-3]
+    #print(wei_query)
 
     d = []
-    # TODO: I am stuck on what to do here
-    parser = QueryParser("content", schema=ix.schema)
-    query = parser.parse(title)
+    pools = []
+
+    parser = QueryParser("body", schema=ix.schema)
+    query = parser.parse(wei_query)
     results = searcher.search(query)
     for r in results:
-        d.append(r.fields())
-
-
-    return d
+        # get the pool score too --
+        R = dict(r.fields()),
+        pools.append(r.score)
+        d.append(R)
+    return (d, pools)
 
 @lru_cache(maxsize=1000) # i am speed
 def get_by_id(article_id):
@@ -110,5 +118,5 @@ def get_by_id(article_id):
     return article
 
 if __name__ == "__main__":
-    print(search_with_terms("hello","hello")[0])
-    print(get_by_id("31d8e582-3a3e-11e1-9d6b-29434ee99d6a"))
+    #print(get_by_id("31d8e582-3a3e-11e1-9d6b-29434ee99d6a"))
+    print(search_with_terms("title is not really used yet","hello")[0])

@@ -33,7 +33,22 @@ def jaccard(lhs: T.Set[str], rhs: T.Set[str]) -> float:
     return isect_size / union_size
 
 
+def clean(d: T.Dict[str,T.Any]) -> T.Dict[str,T.Any]:
+    if 'path' in d.keys():
+        d['id'] = d['path']
+        del d['path']
+
+    if 'pool-score' in d.keys():
+        del d['pool-score']
+
+    return d
+
+
 def extract_features(left: T.Dict[str,T.Any],right: T.Dict[str,T.Any]) -> T.Dict[str,T.Any]:
+
+    left = clean(left)
+    right = clean(right)
+
     qdoc = WapoArticle(**left)
     doc = WapoArticle(**right)
 
@@ -95,112 +110,115 @@ class RankingData:
 
 
 #%%
-qids_to_data: T.Dict[str, RankingData] = {}
-
-with gzip.open("pool.jsonl.gz") as fp:
-    for line in tqdm(fp, total=160):
-        query = json.loads(line)
-        qid = query["qid"]
-        qdoc = query["doc"]
-
-        data = RankingData(qid)
-
-        for entry in query["pool"]:
-            features = extract_features(left=qdoc, right=entry["doc"])
-            """
-            doc = WapoArticle(**entry["doc"])
-            doc_title = set(tokenize(doc.title))
-            words = tokenize(doc.body)
-            uniq_words = set(words)
-            avg_word_len = safe_mean([len(w) for w in words])
-            features = {
-                "pool-score": entry["pool-score"],
-                # I have a blog-post about why this time-delta is really helpful
-                # also, that's what the pool-score is:
-                # https://jjfoley.me/2019/07/24/trec-news-bm25.html
-                "time-delta": qdoc.published_date - doc.published_date,
-                "title-sim": jaccard(q_title, doc_title),
-                "title-body-sim": jaccard(q_title, uniq_words),
-                "title-body-sim-rev": jaccard(doc_title, q_uniq_words),
-                "avg_word_len": avg_word_len,
-                "length": len(words),
-                "uniq_words": len(uniq_words),
-            }
-            """
-            features["pool-score"] = entry["pool-score"]
-            truth = entry["truth"]
-
-            data.examples.append(features)
-            data.docids.append(entry['doc']['id'])
-            data.labels.append(truth)
-
-        qids_to_data[qid] = data
-
-#%%
-queries = sorted(qids_to_data.keys())
-
-RANDOM_SEED = 1234567
-
-tv_qs, test_qs = train_test_split(queries, test_size=40 / 160, random_state=RANDOM_SEED)
-train_qs, vali_qs = train_test_split(
-    tv_qs, test_size=40 / 120, random_state=RANDOM_SEED
-)
-
-print("TRAIN: {}, VALI: {}, TEST: {}".format(len(train_qs), len(vali_qs), len(test_qs)))
-
-#%%
-def collect(what: str, qs: T.List[str], ref: T.Dict[str, RankingData]) -> RankingData:
-    out = RankingData(what)
-    for q in qs:
-        out.append(ref[q])
-    return out
+if __name__ == "__main__":
 
 
-#%%
-# combine data:
-train = collect("train", train_qs, qids_to_data)
+    qids_to_data: T.Dict[str, RankingData] = {}
 
-# convert to matrix and scale features:
-numberer = train.fit_vectorizer()
-fscale = StandardScaler()
-X_train = fscale.fit_transform(train.get_matrix(numberer))
+    with gzip.open("pool.jsonl.gz") as fp:
+        for line in tqdm(fp, total=160):
+            query = json.loads(line)
+            qid = query["qid"]
+            qdoc = query["doc"]
 
-# a 'regression' model for each document is usually __NOT__ amazing.
-# it's considered the worst way to do it.
-m = RandomForestRegressor(max_depth=5, random_state=RANDOM_SEED)
-m.fit(X_train, train.get_ys())
+            data = RankingData(qid)
 
-# What features are working? (random forests / decision trees are great at this)
-print(
-    "Feature Importances:",
-    sorted(
-        zip(numberer.feature_names_, m.feature_importances_),
-        key=lambda tup: tup[1],
-        reverse=True,
-    ),
-)
+            for entry in query["pool"]:
+                features = extract_features(left=qdoc, right=entry["doc"])
+                """
+                doc = WapoArticle(**entry["doc"])
+                doc_title = set(tokenize(doc.title))
+                words = tokenize(doc.body)
+                uniq_words = set(words)
+                avg_word_len = safe_mean([len(w) for w in words])
+                features = {
+                    "pool-score": entry["pool-score"],
+                    # I have a blog-post about why this time-delta is really helpful
+                    # also, that's what the pool-score is:
+                    # https://jjfoley.me/2019/07/24/trec-news-bm25.html
+                    "time-delta": qdoc.published_date - doc.published_date,
+                    "title-sim": jaccard(q_title, doc_title),
+                    "title-body-sim": jaccard(q_title, uniq_words),
+                    "title-body-sim-rev": jaccard(doc_title, q_uniq_words),
+                    "avg_word_len": avg_word_len,
+                    "length": len(words),
+                    "uniq_words": len(uniq_words),
+                }
+                """
+                features["pool-score"] = entry["pool-score"]
+                truth = entry["truth"]
 
-from joblib import dump
-dump(m, 'model.joblib')
+                data.examples.append(features)
+                data.docids.append(entry['doc']['id'])
+                data.labels.append(truth)
 
-def compute_query_APs(dataset: T.List[str]) -> T.List[float]:
-    ap_scores = []
-    # eval one query at a time:
-    for qid in dataset:
-        query = qids_to_data[qid]
-        X_qid = fscale.transform(query.get_matrix(numberer))
-        qid_scores = m.predict(X_qid)
-        # AP uses binary labels:
-        labels = query.get_ys() > 0
-        if True not in labels:
-            # about four queries that have no positive judgments
-            continue
-        AP = average_precision_score(labels, qid_scores)
-        ap_scores.append(AP)
-    return ap_scores
+            qids_to_data[qid] = data
+
+    #%%
+    queries = sorted(qids_to_data.keys())
+
+    RANDOM_SEED = 1234567
+
+    tv_qs, test_qs = train_test_split(queries, test_size=40 / 160, random_state=RANDOM_SEED)
+    train_qs, vali_qs = train_test_split(
+        tv_qs, test_size=40 / 120, random_state=RANDOM_SEED
+    )
+
+    print("TRAIN: {}, VALI: {}, TEST: {}".format(len(train_qs), len(vali_qs), len(test_qs)))
+
+    #%%
+    def collect(what: str, qs: T.List[str], ref: T.Dict[str, RankingData]) -> RankingData:
+        out = RankingData(what)
+        for q in qs:
+            out.append(ref[q])
+        return out
 
 
-print("mAP-train: {:.3}".format(np.mean(compute_query_APs(train_qs))))
-print("mAP-vali: {:.3}".format(np.mean(compute_query_APs(vali_qs))))
-print("mAP-test: {:.3}".format(np.mean(compute_query_APs(test_qs))))
-# %%
+    #%%
+    # combine data:
+    train = collect("train", train_qs, qids_to_data)
+
+    # convert to matrix and scale features:
+    numberer = train.fit_vectorizer()
+    fscale = StandardScaler()
+    X_train = fscale.fit_transform(train.get_matrix(numberer))
+
+    # a 'regression' model for each document is usually __NOT__ amazing.
+    # it's considered the worst way to do it.
+    m = RandomForestRegressor(max_depth=5, random_state=RANDOM_SEED)
+    m.fit(X_train, train.get_ys())
+
+    # What features are working? (random forests / decision trees are great at this)
+    print(
+        "Feature Importances:",
+        sorted(
+            zip(numberer.feature_names_, m.feature_importances_),
+            key=lambda tup: tup[1],
+            reverse=True,
+        ),
+    )
+
+    from joblib import dump
+    dump(m, 'model.joblib')
+
+    def compute_query_APs(dataset: T.List[str]) -> T.List[float]:
+        ap_scores = []
+        # eval one query at a time:
+        for qid in dataset:
+            query = qids_to_data[qid]
+            X_qid = fscale.transform(query.get_matrix(numberer))
+            qid_scores = m.predict(X_qid)
+            # AP uses binary labels:
+            labels = query.get_ys() > 0
+            if True not in labels:
+                # about four queries that have no positive judgments
+                continue
+            AP = average_precision_score(labels, qid_scores)
+            ap_scores.append(AP)
+        return ap_scores
+
+
+    print("mAP-train: {:.3}".format(np.mean(compute_query_APs(train_qs))))
+    print("mAP-vali: {:.3}".format(np.mean(compute_query_APs(vali_qs))))
+    print("mAP-test: {:.3}".format(np.mean(compute_query_APs(test_qs))))
+    # %%
