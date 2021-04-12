@@ -24,8 +24,8 @@ app = Flask(__name__)
 @app.route("/")
 def index():
     # get a list of article id and pass them into the index template
-    base_query = "health wellness smoothie vegan vegan"
-    links,pools = search_with_terms("this gets ignored",base_query)
+    base_query = "Iran trump trump policy"
+    links = search_with_terms("this gets ignored",base_query)
     return render_template("index.html",links=links)
 
 
@@ -38,22 +38,31 @@ def article(article_id):
         return render_template("error.html",msg={'code':404,'text':'404 not found'})
 
     # 3. if we *did* find it, search for some relevant articles using Whoosh
-    links, pools = search_with_terms(qdoc['title'],qdoc['body'])
+    links = search_with_terms(qdoc['title'],qdoc['body'])
     # question: does links give me access to the
-    print(type(links))
 
     # 4. then apply *my model* to the search results and rank them in decreasing order of relevance
     # ( this will be the big assignment )
-    features_X = []
-    for doc, score in zip(links, pools):
-        print(doc[0])
-        f = extract_features(qdoc,doc[0])
-        f.update({'pool-score':score})
-        features_X.append(f)
 
+    # 4a. - get the features
+    features_X = []
+    rank = 1
+    for doc in links:
+        f = extract_features(qdoc,doc)
+        f.update({'pool-score':1/rank}) # use (1/rank) as a feature.
+        features_X.append(f)
+        rank +=1
     X = numberer.fit_transform(features_X)
+
+    # 4b. apply the model and SORT by its output
     y_pred = regressor.predict(X)
-    print(y_pred)
+    scores_dict = {}
+
+    for score, link in zip(y_pred, links):
+        scores_dict[link['id']] = score
+        print(score,link['title'])
+
+    L = sorted(links,key = lambda x: -scores_dict[x['id']])
 
     # 5. Finally use the links and article to render the page.
-    return render_template("article.html",article=doc[0],links=[l[0] for l in links])
+    return render_template("article.html",article=doc,links=L)

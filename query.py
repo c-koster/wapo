@@ -97,17 +97,15 @@ def search_with_terms(title, body):
     #print(wei_query)
 
     d = []
-    pools = []
 
     parser = QueryParser("body", schema=ix.schema)
     query = parser.parse(wei_query)
     results = searcher.search(query)
     for r in results:
         # get the pool score too --
-        R = dict(r.fields()),
-        pools.append(r.score)
-        d.append(R)
-    return (d, pools)
+        res = dict(r.fields())
+        d.append(res)
+    return d
 
 @lru_cache(maxsize=1000) # i am speed
 def get_by_id(article_id):
