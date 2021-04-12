@@ -109,6 +109,9 @@ def extract_features(id1, id2):
     }
     return d # return a dict with all the relevant features we extracted
 
+
+print(get_by_id("X2MXM6EOZMI6TMEOZ7MJXU3NJY"))
+exit(0)
 def get_labels_dict():
     """
 

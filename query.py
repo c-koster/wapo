@@ -102,8 +102,9 @@ def search_with_terms(title, body):
     query = parser.parse(wei_query)
     results = searcher.search(query)
     for r in results:
-        # get the pool score too --
         res = dict(r.fields())
+        if res["title"] == title:
+            continue
         d.append(res)
     return d
 

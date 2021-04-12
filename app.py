@@ -25,7 +25,7 @@ app = Flask(__name__)
 def index():
     # get a list of article id and pass them into the index template
     base_query = "Iran trump trump policy"
-    links = search_with_terms("this gets ignored",base_query)
+    links = search_with_terms("not a news title",base_query)
     return render_template("index.html",links=links)
 
 
@@ -62,7 +62,7 @@ def article(article_id):
         scores_dict[link['id']] = score
         print(score,link['title'])
 
-    L = sorted(links,key = lambda x: -scores_dict[x['id']])
+    L = sorted(links,key = lambda x: scores_dict[x['id']], reverse=True)
 
     # 5. Finally use the links and article to render the page.
-    return render_template("article.html",article=doc,links=L)
+    return render_template("article.html",article=qdoc,links=L)
