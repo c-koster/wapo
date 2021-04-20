@@ -16,10 +16,9 @@ from sklearn.metrics import average_precision_score
 from sklearn.base import RegressorMixin
 
 # and the models we're going to try -- regression ends up not being so good
-from sklearn.linear_model import SGDRegressor
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.neighbors import KNeighborsRegressor
-
+from sklearn.linear_model import SGDClassifier
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.ensemble import ExtraTreesClassifier
 
 
 WORD_REGEX = re.compile(r"\w+")
@@ -45,18 +44,18 @@ def clean(d: T.Dict[str,T.Any]) -> T.Dict[str,T.Any]:
     if 'path' in d.keys():
         d['id'] = d['path']
         del d['path']
-
     if 'pool-score' in d.keys():
         del d['pool-score']
-
     return d
 
 
-def extract_features(left: T.Dict[str,T.Any],right: T.Dict[str,T.Any]) -> T.Dict[str,T.Any]:
+def extract_features(left: T.Dict[str,T.Any], right: T.Dict[str,T.Any]) -> T.Dict[str,T.Any]:
 
+    # this is so my live imp and my experiments can use the same function.
     left = clean(left)
     right = clean(right)
 
+    # make everyone into a class so I can use object notation
     qdoc = WapoArticle(**left)
     doc = WapoArticle(**right)
 
@@ -73,6 +72,7 @@ def extract_features(left: T.Dict[str,T.Any],right: T.Dict[str,T.Any]) -> T.Dict
         "title-sim": jaccard(q_title, doc_title),
         "title-body-sim": jaccard(q_title, uniq_words),
         "title-body-sim-rev": jaccard(doc_title, q_uniq_words),
+        "body-body-sim": jaccard(uniq_words, q_uniq_words),
         "avg_word_len": avg_word_len,
         "length": len(words),
         "uniq_words": len(uniq_words),
@@ -104,6 +104,7 @@ class RankingData:
     examples: T.List[T.Dict[str, T.Any]] = field(default_factory=list)
     labels: T.List[int] = field(default_factory=list)
     docids: T.List[str] = field(default_factory=list)
+    isClassifier: bool = False
 
     def append(self, other: "RankingData") -> None:
         self.examples.extend(other.examples)
@@ -119,7 +120,10 @@ class RankingData:
         return numberer.transform(self.examples)
 
     def get_ys(self) -> np.ndarray:
-        return np.array(self.labels)
+        a = np.array(self.labels)
+        if self.isClassifier:
+            a = a > 0
+        return a
 
 
 if __name__ == "__main__":
@@ -132,7 +136,7 @@ if __name__ == "__main__":
             qid = query["qid"]
             qdoc = query["doc"]
 
-            data = RankingData(qid)
+            data = RankingData(qid,isClassifier=True)
             rank = 1
             for entry in query["pool"]:
                 features = extract_features(left=qdoc, right=entry["doc"])
@@ -162,7 +166,7 @@ if __name__ == "__main__":
 
     #%%
     def collect(what: str, qs: T.List[str], ref: T.Dict[str, RankingData]) -> RankingData:
-        out = RankingData(what)
+        out = RankingData(what,isClassifier=True)
         for q in qs:
             out.append(ref[q])
         return out
@@ -182,7 +186,8 @@ if __name__ == "__main__":
         for qid in dataset:
             query = qids_to_data[qid]
             X_qid = fscale.transform(query.get_matrix(numberer))
-            qid_scores = model.predict(X_qid)
+            # this outputs two values --we want the
+            qid_scores = model.predict_proba(X_qid)[:,1]
             # AP uses binary labels:
             labels = query.get_ys() > 0
             if True not in labels:
@@ -198,18 +203,21 @@ if __name__ == "__main__":
         performances: T.List[ExperimentResult] = [] # try a bunch and keep the best one !
 
         for rnd in tqdm(range(3)): # 3 random restarts
-            for crit in ["mse"]:
-                for d in range(4,7):
-                    params = {
-                        "criterion": crit,
-                        "max_depth": d,
-                        "random_state": rnd,
-                    }
-                    f = RandomForestRegressor(**params)
-                    f.fit(X_train, train.get_ys())
-                    vali_ap = np.mean(compute_query_APs(f,vali_qs))
-                    result = ExperimentResult(vali_ap, params, f)
-                    performances.append(result)
+            for crit in ["gini","entropy"]:
+                for d in [2, 4, 7, 10, None]:
+                    for leafsize in [2]:
+                        params = {
+                            "criterion": crit,
+                            "max_depth": d,
+                            "random_state": rnd,
+                            "min_samples_leaf": leafsize
+                        }
+                        f = RandomForestClassifier(**params)
+                        #f = ExtraTreesClassifier(**params)
+                        f.fit(X_train, train.get_ys())
+                        vali_ap = np.mean(compute_query_APs(f,vali_qs))
+                        result = ExperimentResult(vali_ap, params, f)
+                        performances.append(result)
 
         # return the model with the best performanece
         return max(performances, key=lambda result: result.vali_ap)
@@ -226,23 +234,7 @@ if __name__ == "__main__":
                     "random_state": rnd,
                     "penalty": p
                 }
-                f = SGDRegressor(**params)
-                f.fit(X_train, train.get_ys())
-                vali_ap = np.mean(compute_query_APs(f,vali_qs))
-                result = ExperimentResult(vali_ap, params, f)
-                performances.append(result)
-        return max(performances, key=lambda result: result.vali_ap)
-
-    def consider_knn() -> ExperimentResult:
-
-        performances: T.List[ExperimentResult] = []
-        for w in ["distance","uniform"]:
-            for num in [5,50,500]:
-                params = {
-                    "weights": w,
-                    "n_neighbors": num
-                }
-                f = KNeighborsRegressor(**params)
+                f = SGDClassifier(**params)
                 f.fit(X_train, train.get_ys())
                 vali_ap = np.mean(compute_query_APs(f,vali_qs))
                 result = ExperimentResult(vali_ap, params, f)
@@ -256,7 +248,7 @@ if __name__ == "__main__":
     result = consider_forest()
     keep_model = result.model # the random forest is definitely best
     #linear_model = consider_linear().model
-    #knn = consider_knn().model
+    print(result.params)
 
     # What features are working? (random forests / decision trees are great at this)
     print(
@@ -267,7 +259,6 @@ if __name__ == "__main__":
             reverse=True,
         ),
     )
-
     print("mAP-train: {:.3}".format(np.mean(compute_query_APs(keep_model, train_qs))))
     print("mAP-vali: {:.3}".format(np.mean(compute_query_APs(keep_model, vali_qs))))
     print("mAP-test: {:.3}".format(np.mean(compute_query_APs(keep_model,test_qs))))
@@ -275,6 +266,9 @@ if __name__ == "__main__":
     # then save it for my live implementation:
     from joblib import dump
     dump(keep_model, 'model.joblib')
+
+
+    exit(0)
 
     # ok as foley suggested, let's try a learning curve anaysis. using the collect function
     num_train = list(range(5, len(train_qs), 5))
@@ -301,7 +295,8 @@ if __name__ == "__main__":
             fscale = StandardScaler()
             X_train = fscale.fit_transform(train_i.get_matrix(numberer))
 
-            m = RandomForestRegressor(**result.params)
+            #m = ExtraTreesClassifier(**result.params)
+            m = RandomForestClassifier(**result.params)
             m.fit(X_train, train_i.get_ys()) # then fit it
 
             scores[label].append(np.mean(compute_query_APs(m, vali_qs)))
@@ -311,6 +306,8 @@ if __name__ == "__main__":
 
 
     # First, try a line plot, with shaded variance regions:
+
+
     import matplotlib.pyplot as plt
 
     means = np.array(aps_mean)
@@ -321,5 +318,18 @@ if __name__ == "__main__":
     plt.ylabel("Mean AP")
     plt.xlim([5, len(train_qs)])
     plt.title("Learning Curve")
-    plt.savefig("learning-curves.png")
+    plt.savefig("learning-curves2.png")
     plt.show()
+
+    # if you use random forest classifier and try predict proba -- you get
+    #  good/similar results results (e.g. multiclass classifier or regressor)
+
+    # TODO:
+    # extract features stuff:
+    # - body body jaccard (done)
+    # - 'kicker' understanding model -- huggingface similarities
+    # - something something transformer distil-bert vector
+    # - author-author distance
+
+    # what makes something a good 'background' article to describe what's going on
+    # here... "readability score"

@@ -15,7 +15,7 @@ from experiment1 import extract_features
 from sklearn.feature_extraction import DictVectorizer
 from joblib import load
 numberer = DictVectorizer(sort=True, sparse=False)
-regressor = load('model.joblib')
+model = load('model.joblib')
 # how do I fetch this "pool score" thing?
 
 app = Flask(__name__)
@@ -55,7 +55,7 @@ def article(article_id):
     X = numberer.fit_transform(features_X)
 
     # 4b. apply the model and SORT by its output
-    y_pred = regressor.predict(X)
+    y_pred = model.predict_proba(X)[:,1]
     scores_dict = {}
 
     for score, link in zip(y_pred, links):
