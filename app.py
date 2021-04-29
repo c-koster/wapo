@@ -60,9 +60,9 @@ def article(article_id):
 
     for score, link in zip(y_pred, links):
         scores_dict[link['id']] = score
-        print(score,link['title'])
+        print(str(score)[:5],link['title'])
 
     L = sorted(links,key = lambda x: scores_dict[x['id']], reverse=True)
 
     # 5. Finally use the links and article to render the page.
-    return render_template("article.html",article=qdoc,links=L)
+    return render_template("article.html",article=qdoc,links=L[:10])

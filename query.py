@@ -14,6 +14,8 @@ from collections import Counter
 
 ix = open_dir("indexdir")
 searcher = ix.searcher()
+
+top_k = 200
 # so as it turns out -- the open and closing of a searcher are quite computationally expensive
 # defining a searcher as a global variable here speeds up feature extraction of 42,000 pairs
 # from 9 hours to about 10 seconds
@@ -100,7 +102,7 @@ def search_with_terms(title, body):
 
     parser = QueryParser("body", schema=ix.schema)
     query = parser.parse(wei_query)
-    results = searcher.search(query)
+    results = searcher.search(query,limit=top_k)
     for r in results:
         res = dict(r.fields())
         if res["title"] == title:

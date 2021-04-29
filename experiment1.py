@@ -1,10 +1,13 @@
-#%%
 import gzip, json
+
+import re
+import numpy as np
+import random
+from joblib import load, dump
+# fancy python stuff
 from tqdm import tqdm
 import typing as T
 from dataclasses import dataclass, field
-import re
-import numpy as np
 
 # get sklearn in here --
 from sklearn.model_selection import train_test_split
@@ -12,17 +15,47 @@ from sklearn.feature_extraction import DictVectorizer
 from sklearn.preprocessing import StandardScaler
 from sklearn.utils import resample
 
-from sklearn.metrics import average_precision_score
-from sklearn.base import RegressorMixin
+from sklearn.metrics import average_precision_score, ndcg_score
+from sklearn.base import ClassifierMixin
 
-# and the models we're going to try -- regression ends up not being so good
+# and the models we're going to try -- regression ended up not being so good
 from sklearn.linear_model import SGDClassifier
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.ensemble import ExtraTreesClassifier
 
+from scipy.spatial import distance
+
+
+# define a dataclass to manage word embeddings
+@dataclass
+class NamedVectors:
+    name_to_row: T.Dict[str, int] = field(default_factory=dict)
+    vectors: np.ndarray = np.zeros(1)
+
+    def get(self, name: str) -> T.Optional[np.ndarray]:
+        row = self.name_to_row.get(name, -1)
+        if row == -1:
+            return None
+        return self.vectors[row,:]
+
+
+# need to put it after the NamedVectors object definition or
+# else we don't know what that object means
+wapo_vectors_raw = load('wapo.distilbert.joblib') # load this enormous 5gb file into memory.
+
+
+# load in my word embeddings
+body = wapo_vectors_raw['body']
+vecs_body = NamedVectors(body.name_to_row, body.vectors)
+title = wapo_vectors_raw['title']
+vecs_title = NamedVectors(title.name_to_row, title.vectors)
+ID = "96ab542e-6a07-11e6-ba32-5a4bf5aad4fa"
+TOP_ID = "TVJOOPLOWFHMJMDLVTVPPVQCM4"
 
 WORD_REGEX = re.compile(r"\w+")
 
+RANDOM_SEED = 1234567
+random.seed(RANDOM_SEED)
 
 def tokenize(input: str) -> T.List[str]:
     return WORD_REGEX.split(input.lower())
@@ -63,6 +96,15 @@ def extract_features(left: T.Dict[str,T.Any], right: T.Dict[str,T.Any]) -> T.Dic
     q_words = tokenize(qdoc.body)
     q_uniq_words = set(q_words)
 
+    #q_named = get_named_entities(qdoc.body)
+    #doc_named = get_named_entities(doc.body)
+    qvec_body = body.get(qdoc.id)
+    dvec_body = body.get(doc.id)
+
+
+    #qvec_title = title.get(qdoc.id)
+    #dvec_title = title.get(doc.id)
+
     doc_title = set(tokenize(doc.title))
     words = tokenize(doc.body)
     uniq_words = set(words)
@@ -70,17 +112,22 @@ def extract_features(left: T.Dict[str,T.Any], right: T.Dict[str,T.Any]) -> T.Dic
     features = {
         "time-delta": qdoc.published_date - doc.published_date,
         "title-sim": jaccard(q_title, doc_title),
+        "body-cos-distance": distance.cosine(qvec_body, dvec_body),
+        #"title-cos-distance": distance.cosine(qvec_title, dvec_title),
+        #"named-entity-sim":jaccard(doc_named,q_named),
         "title-body-sim": jaccard(q_title, uniq_words),
         "title-body-sim-rev": jaccard(doc_title, q_uniq_words),
         "body-body-sim": jaccard(uniq_words, q_uniq_words),
         "avg_word_len": avg_word_len,
         "length": len(words),
         "uniq_words": len(uniq_words),
+        "author-eq": qdoc.author == doc.author,
+        #"random": random.random(),
     }
     return features
 
 
-
+# object definitions -- dataclasses, very cool!!
 @dataclass
 class WapoArticle:
     id: str
@@ -96,7 +143,7 @@ class WapoArticle:
 class ExperimentResult:
     vali_ap: float
     params: T.Dict[str, T.Any]
-    model: RegressorMixin
+    model: ClassifierMixin
 
 @dataclass
 class RankingData:
@@ -114,6 +161,7 @@ class RankingData:
     def fit_vectorizer(self) -> DictVectorizer:
         numberer = DictVectorizer(sort=True, sparse=False)
         numberer.fit(self.examples)
+
         return numberer
 
     def get_matrix(self, numberer: DictVectorizer) -> np.ndarray:
@@ -140,7 +188,7 @@ if __name__ == "__main__":
             rank = 1
             for entry in query["pool"]:
                 features = extract_features(left=qdoc, right=entry["doc"])
-                features["pool-score"] = 1/rank
+                features["pool-rank"] = 1/rank
                 truth = entry["truth"]
 
                 data.examples.append(features)
@@ -150,10 +198,8 @@ if __name__ == "__main__":
 
             qids_to_data[qid] = data
 
-    #%%
     queries = sorted(qids_to_data.keys())
 
-    RANDOM_SEED = 1234567
 
     tv_qs, test_qs = train_test_split(queries, test_size=40 / 160, random_state=RANDOM_SEED)
     train_qs, vali_qs = train_test_split(
@@ -163,12 +209,14 @@ if __name__ == "__main__":
     print("TRAIN: {}, VALI: {}, TEST: {}".format(len(train_qs), len(vali_qs), len(test_qs)))
 
 
+    def collect(what: str, qs: T.List[str], ref: T.Dict[str, RankingData],excludeFeature: str="") -> RankingData:
 
-    #%%
-    def collect(what: str, qs: T.List[str], ref: T.Dict[str, RankingData]) -> RankingData:
         out = RankingData(what,isClassifier=True)
         for q in qs:
             out.append(ref[q])
+        if excludeFeature != "":
+            x = 0 # no-op
+
         return out
 
     # combine data:
@@ -180,7 +228,7 @@ if __name__ == "__main__":
     X_train = fscale.fit_transform(train.get_matrix(numberer))
 
 
-    def compute_query_APs(model: RegressorMixin, dataset: T.List[str]) -> T.List[float]:
+    def compute_query_APs(model: ClassifierMixin, dataset: T.List[str]) -> T.List[float]:
         ap_scores = []
         # eval one query at a time:
         for qid in dataset:
@@ -196,6 +244,33 @@ if __name__ == "__main__":
             AP = average_precision_score(labels, qid_scores)
             ap_scores.append(AP)
         return ap_scores
+
+
+    def compute_query_ndcgs(model: ClassifierMixin, dataset: T.List[str], depth=10) -> T.List[float]:
+        ap_scores = []
+        # weights = np.array([0, 1, 2, 3, 4]) ** 2
+        # eval one query at a time:
+        for qid in dataset:
+            query = qids_to_data[qid]
+            X_qid = fscale.transform(query.get_matrix(numberer))
+            if hasattr(model, "decision_function"):
+                qid_scores = model.decision_function(X_qid)
+            elif hasattr(model, "predict_proba"):
+                # qid_scores = (weights * m.predict_proba(X_qid)).sum(axis=1)
+                qid_scores = model.predict_proba(X_qid)[:, 1]
+            else:  # must be regression
+                qid_scores = model.predict(X_qid)
+            # AP uses binary labels:
+            labels = query.get_ys()
+            if labels.sum() == 0.0:
+                # about four queries that have no positive judgments
+                continue
+            ndcg10 = ndcg_score(
+                y_true=np.array([labels]), y_score=np.array([qid_scores]), k=depth
+            )
+            ap_scores.append(ndcg10)
+        return ap_scores
+
 
 
     def consider_forest() -> ExperimentResult:
@@ -218,6 +293,15 @@ if __name__ == "__main__":
                         vali_ap = np.mean(compute_query_APs(f,vali_qs))
                         result = ExperimentResult(vali_ap, params, f)
                         performances.append(result)
+
+        """
+        p = {'criterion': 'gini', 'max_depth': 7, 'random_state': 1, 'min_samples_leaf': 2}
+        f = RandomForestClassifier(**p)
+        f.fit(X_train, train.get_ys())
+        vali_ap = np.mean(compute_query_APs(f,vali_qs))
+        result = ExperimentResult(vali_ap, p, f)
+        performances.append(result)
+        """
 
         # return the model with the best performanece
         return max(performances, key=lambda result: result.vali_ap)
@@ -245,6 +329,8 @@ if __name__ == "__main__":
 
     # a 'regression' model for each document is usually __NOT__ amazing.
     # it's considered the worst way to do it.
+    # - here i've switched to a binary classifier instead, and provide my
+    # pointwise score with predict_proba
     result = consider_forest()
     keep_model = result.model # the random forest is definitely best
     #linear_model = consider_linear().model
@@ -263,9 +349,22 @@ if __name__ == "__main__":
     print("mAP-vali: {:.3}".format(np.mean(compute_query_APs(keep_model, vali_qs))))
     print("mAP-test: {:.3}".format(np.mean(compute_query_APs(keep_model,test_qs))))
 
+    print("ndcgs: {:.3}".format(np.mean(compute_query_ndcgs(keep_model, test_qs))))
+
+
     # then save it for my live implementation:
-    from joblib import dump
     dump(keep_model, 'model.joblib')
+
+
+
+    # many of my features are repetetive, so here I'm going to try a feature removal analysis
+    # by adding a method to the collect function
+    b = collect("train", train_qs, qids_to_data)
+
+    # convert to matrix and scale features:
+    numberer = b.fit_vectorizer()
+    for name in numberer.feature_names_:
+        print(name)
 
 
     exit(0)
@@ -306,8 +405,6 @@ if __name__ == "__main__":
 
 
     # First, try a line plot, with shaded variance regions:
-
-
     import matplotlib.pyplot as plt
 
     means = np.array(aps_mean)
@@ -326,10 +423,8 @@ if __name__ == "__main__":
 
     # TODO:
     # extract features stuff:
-    # - body body jaccard (done)
-    # - 'kicker' understanding model -- huggingface similarities
     # - something something transformer distil-bert vector
-    # - author-author distance
+    # - named entities
 
     # what makes something a good 'background' article to describe what's going on
     # here... "readability score"
