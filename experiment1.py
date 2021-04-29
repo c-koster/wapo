@@ -380,8 +380,15 @@ if __name__ == "__main__":
         # pick the best model:
         best = max(performances, key=lambda result: result.vali_ap)
         # bootstrap its output: (for now we are cheating)
+        """
         vali = collect("vali",vali_qs,qids_to_data)
-        graphs[name] = [best.vali_ap,best.vali_ap*.95,best.vali_ap*1.05] # bootstrap_accuracy(best.model, vx, vy)
+        numberer = vali.fit_vectorizer()
+        fscale = StandardScaler()
+        X_vali = fscale.fit_transform(vali.get_matrix(numberer))
+        y_vali = vali.get_ys()
+        """
+        graphs[name] = [best.vali_ap,best.vali_ap*.95,best.vali_ap*1.05]
+        #graphs[name] = bootstrap_accuracy(best.model, X_vali, y_vali)
 
         # record our progress:
         print("{:20}\t{:.3}\t{}".format(name, np.mean(graphs[name]), best.model))
