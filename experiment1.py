@@ -122,7 +122,7 @@ def extract_features(left: T.Dict[str,T.Any], right: T.Dict[str,T.Any]) -> T.Dic
         "length": len(words),
         "uniq_words": len(uniq_words),
         "author-eq": qdoc.author == doc.author,
-        #"random": random.random(),
+        "random": random.random(),
     }
     return features
 
@@ -228,6 +228,7 @@ if __name__ == "__main__":
     X_train = fscale.fit_transform(train.get_matrix(numberer))
 
 
+
     def compute_query_APs(model: ClassifierMixin, dataset: T.List[str]) -> T.List[float]:
         ap_scores = []
         # eval one query at a time:
@@ -276,7 +277,7 @@ if __name__ == "__main__":
     def consider_forest() -> ExperimentResult:
 
         performances: T.List[ExperimentResult] = [] # try a bunch and keep the best one !
-
+        """
         for rnd in tqdm(range(3)): # 3 random restarts
             for crit in ["gini","entropy"]:
                 for d in [2, 4, 7, 10, None]:
@@ -295,13 +296,14 @@ if __name__ == "__main__":
                         performances.append(result)
 
         """
+
         p = {'criterion': 'gini', 'max_depth': 7, 'random_state': 1, 'min_samples_leaf': 2}
         f = RandomForestClassifier(**p)
         f.fit(X_train, train.get_ys())
         vali_ap = np.mean(compute_query_APs(f,vali_qs))
         result = ExperimentResult(vali_ap, p, f)
         performances.append(result)
-        """
+
 
         # return the model with the best performanece
         return max(performances, key=lambda result: result.vali_ap)
@@ -334,7 +336,7 @@ if __name__ == "__main__":
     result = consider_forest()
     keep_model = result.model # the random forest is definitely best
     #linear_model = consider_linear().model
-    print(result.params)
+    best_params = result.params
 
     # What features are working? (random forests / decision trees are great at this)
     print(
@@ -359,13 +361,67 @@ if __name__ == "__main__":
 
     # many of my features are repetetive, so here I'm going to try a feature removal analysis
     # by adding a method to the collect function
-    b = collect("train", train_qs, qids_to_data)
 
-    # convert to matrix and scale features:
-    numberer = b.fit_vectorizer()
-    for name in numberer.feature_names_:
-        print(name)
+    # make a dictionary for boxplottinng
+    graphs: T.Dict[str, T.List[float]] = {}
 
+    def train_and_eval(name, x, y):
+        """ train and evaluate a single model """
+        performances: T.List[ExperimentResult] = []
+
+
+        f = RandomForestClassifier(**best_params)
+
+        f.fit(x, y)
+        vali_ap = np.mean(compute_query_APs(f,vali_qs))
+        result = ExperimentResult(vali_ap, best_params, f)
+        performances.append(result)
+
+        # pick the best model:
+        best = max(performances, key=lambda result: result.vali_ap)
+        # bootstrap its output: (for now we are cheating)
+        vali = collect("vali",vali_qs,qids_to_data)
+        graphs[name] = [best.vali_ap,best.vali_ap*.95,best.vali_ap*1.05] # bootstrap_accuracy(best.model, vx, vy)
+
+        # record our progress:
+        print("{:20}\t{:.3}\t{}".format(name, np.mean(graphs[name]), best.model))
+
+
+    train_and_eval("Full Model", X_train, train.get_ys())
+    for fid, fname in enumerate(numberer.feature_names_):
+        # one-by-one, delete your features:
+
+        without_X = X_train.copy()
+        without_X[:, fid] = 0.0
+        # score a model without the feature to see if it __really__ helps or not:
+        train_and_eval("without {}".format(fname), without_X, train.get_ys())
+
+
+
+    import matplotlib.pyplot as plt
+
+    # OK now box-plot it
+    # Matplotlib stuff:
+    box_names = []
+    box_dists = []
+    for (k, v) in sorted(graphs.items(), key=lambda tup: np.mean(tup[1])):
+        box_names.append(k)
+        box_dists.append(v)
+
+    plt.boxplot(box_dists)
+    plt.xticks(
+        rotation=30,
+        horizontalalignment="right",
+        ticks=range(1, len(box_names) + 1),
+        labels=box_names,
+    )
+    plt.title("Feature Removal Analysis")
+    plt.xlabel("Included?")
+    plt.ylabel("AP_score")
+    plt.tight_layout()
+
+    plt.savefig("feature-removal.png")
+    plt.show()
 
     exit(0)
 
@@ -392,11 +448,11 @@ if __name__ == "__main__":
             # convert to matrix and scale features:
             numberer = train_i.fit_vectorizer()
             fscale = StandardScaler()
-            X_train = fscale.fit_transform(train_i.get_matrix(numberer))
+            X_train_i = fscale.fit_transform(train_i.get_matrix(numberer))
 
             #m = ExtraTreesClassifier(**result.params)
             m = RandomForestClassifier(**result.params)
-            m.fit(X_train, train_i.get_ys()) # then fit it
+            m.fit(X_train_i, train_i.get_ys()) # then fit it
 
             scores[label].append(np.mean(compute_query_APs(m, vali_qs)))
 
@@ -405,7 +461,6 @@ if __name__ == "__main__":
 
 
     # First, try a line plot, with shaded variance regions:
-    import matplotlib.pyplot as plt
 
     means = np.array(aps_mean)
     std = np.array(aps_std)
@@ -427,4 +482,4 @@ if __name__ == "__main__":
     # - named entities
 
     # what makes something a good 'background' article to describe what's going on
-    # here... "readability score"
+    # here... "readability-score" for the result document?
