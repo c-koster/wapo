@@ -111,18 +111,18 @@ def extract_features(left: T.Dict[str,T.Any], right: T.Dict[str,T.Any]) -> T.Dic
     avg_word_len = safe_mean([len(w) for w in words])
     features = {
         "time-delta": qdoc.published_date - doc.published_date,
-        "title-sim": jaccard(q_title, doc_title),
+        #"title-sim": jaccard(q_title, doc_title),
         "body-cos-distance": distance.cosine(qvec_body, dvec_body),
         #"title-cos-distance": distance.cosine(qvec_title, dvec_title),
         #"named-entity-sim":jaccard(doc_named,q_named),
         "title-body-sim": jaccard(q_title, uniq_words),
         "title-body-sim-rev": jaccard(doc_title, q_uniq_words),
-        "body-body-sim": jaccard(uniq_words, q_uniq_words),
-        "avg_word_len": avg_word_len,
+        #"body-body-sim": jaccard(uniq_words, q_uniq_words),
+        #"avg_word_len": avg_word_len,
         "length": len(words),
         "uniq_words": len(uniq_words),
-        "author-eq": qdoc.author == doc.author,
-        "random": random.random(),
+        #"author-eq": qdoc.author == doc.author,
+        #"random": random.random(),
     }
     return features
 
@@ -277,7 +277,7 @@ if __name__ == "__main__":
     def consider_forest() -> ExperimentResult:
 
         performances: T.List[ExperimentResult] = [] # try a bunch and keep the best one !
-        """
+
         for rnd in tqdm(range(3)): # 3 random restarts
             for crit in ["gini","entropy"]:
                 for d in [2, 4, 7, 10, None]:
@@ -288,24 +288,23 @@ if __name__ == "__main__":
                             "random_state": rnd,
                             "min_samples_leaf": leafsize
                         }
-                        f = RandomForestClassifier(**params)
-                        #f = ExtraTreesClassifier(**params)
+                        #f = RandomForestClassifier(**params)
+                        f = ExtraTreesClassifier(**params)
                         f.fit(X_train, train.get_ys())
                         vali_ap = np.mean(compute_query_APs(f,vali_qs))
                         result = ExperimentResult(vali_ap, params, f)
                         performances.append(result)
 
-        """
 
+        """
         p = {'criterion': 'gini', 'max_depth': 7, 'random_state': 1, 'min_samples_leaf': 2}
         f = RandomForestClassifier(**p)
         f.fit(X_train, train.get_ys())
         vali_ap = np.mean(compute_query_APs(f,vali_qs))
         result = ExperimentResult(vali_ap, p, f)
         performances.append(result)
-
-
-        # return the model with the best performanece
+        """
+        # return the model with the best performance
         return max(performances, key=lambda result: result.vali_ap)
 
 
@@ -357,6 +356,7 @@ if __name__ == "__main__":
     # then save it for my live implementation:
     dump(keep_model, 'model.joblib')
 
+    exit(0)
 
 
     # many of my features are repetetive, so here I'm going to try a feature removal analysis
@@ -430,7 +430,6 @@ if __name__ == "__main__":
     plt.savefig("feature-removal.png")
     plt.show()
 
-    exit(0)
 
     # ok as foley suggested, let's try a learning curve anaysis. using the collect function
     num_train = list(range(5, len(train_qs), 5))
