@@ -49,8 +49,47 @@ body = wapo_vectors_raw['body']
 vecs_body = NamedVectors(body.name_to_row, body.vectors)
 title = wapo_vectors_raw['title']
 vecs_title = NamedVectors(title.name_to_row, title.vectors)
-ID = "96ab542e-6a07-11e6-ba32-5a4bf5aad4fa"
-TOP_ID = "TVJOOPLOWFHMJMDLVTVPPVQCM4"
+
+"""
+stoplabels = {
+    "PERSON": True,
+    "NORP": True,
+    "FAC": True,
+    "ORG": True,
+    "GPE": True,
+    "LOC": True,
+    "PRODUCT": True,
+    "EVENT": True,
+    "WORK_OF_ART": True,
+    "LAW": True,
+    "LANGUAGE": True,
+    "DATE": True,
+    "TIME": False,
+    "PERCENT": False,
+    "MONEY": False,
+    "QUANTITY": False,
+    "ORDINAL": False,
+    "CARDINAL": False,
+}
+
+# load in my precomputed NER articles:
+id_to_ner = {}
+with gzip.open("wapo.ner.jsonl.gz") as fp:
+    for line in tqdm(fp, total=728626):
+        l = json.loads(line)
+        id = l['id']
+        ner_list = l['ner'].split('\t')
+
+        ner_list_out = []
+        for i in ner_list:
+            entity = i.split('/')
+            if len(entity) == 2:
+                if stoplabels[entity[1]]:
+                    ner_list_out.append(entity[0])
+
+        id_to_ner[id] = ner_list_out
+"""
+
 
 WORD_REGEX = re.compile(r"\w+")
 
@@ -101,6 +140,9 @@ def extract_features(left: T.Dict[str,T.Any], right: T.Dict[str,T.Any]) -> T.Dic
     qvec_body = body.get(qdoc.id)
     dvec_body = body.get(doc.id)
 
+    qner = id_to_ner[qdoc.id]
+    dner = id_to_ner[doc.id]
+
 
     #qvec_title = title.get(qdoc.id)
     #dvec_title = title.get(doc.id)
@@ -113,6 +155,7 @@ def extract_features(left: T.Dict[str,T.Any], right: T.Dict[str,T.Any]) -> T.Dic
         "time-delta": qdoc.published_date - doc.published_date,
         #"title-sim": jaccard(q_title, doc_title),
         "body-cos-distance": distance.cosine(qvec_body, dvec_body),
+        #"ner-sim": jaccard(set(qner),set(dner)),
         #"title-cos-distance": distance.cosine(qvec_title, dvec_title),
         #"named-entity-sim":jaccard(doc_named,q_named),
         "title-body-sim": jaccard(q_title, uniq_words),
@@ -120,6 +163,7 @@ def extract_features(left: T.Dict[str,T.Any], right: T.Dict[str,T.Any]) -> T.Dic
         #"body-body-sim": jaccard(uniq_words, q_uniq_words),
         #"avg_word_len": avg_word_len,
         "length": len(words),
+        #"num-entities":len(dner), # maybe informativeness?
         "uniq_words": len(uniq_words),
         #"author-eq": qdoc.author == doc.author,
         #"random": random.random(),
@@ -280,7 +324,7 @@ if __name__ == "__main__":
 
         for rnd in tqdm(range(3)): # 3 random restarts
             for crit in ["gini","entropy"]:
-                for d in [2, 4, 7, 10, None]:
+                for d in [4, 7, 10, None]:
                     for leafsize in [2]:
                         params = {
                             "criterion": crit,
