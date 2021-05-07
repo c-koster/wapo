@@ -2,16 +2,18 @@
 Should be a way to see the relevant articles, and eventually view the best background links'
 below. Flask app for UI here we go
 """
-
+from experiment1 import extract_features
 from flask import Flask, render_template
 import json
 import gzip
 from query import search_with_terms, get_by_id
 
+#import flask
+#flask.__main__.NamedVectors = NamedVectors
+
 
 # fetch everything I need to use for my sklearn model
 # these imports are for implementing a live model --
-from experiment1 import extract_features
 from sklearn.feature_extraction import DictVectorizer
 from joblib import load
 numberer = DictVectorizer(sort=True, sparse=False)

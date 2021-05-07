@@ -4,7 +4,9 @@ import re
 import numpy as np
 import random
 from joblib import load, dump
+
 # fancy python stuff
+from functools import lru_cache
 from tqdm import tqdm
 import typing as T
 from dataclasses import dataclass, field
@@ -39,16 +41,19 @@ class NamedVectors:
         return self.vectors[row,:]
 
 
-# need to put it after the NamedVectors object definition or
-# else we don't know what that object means
-wapo_vectors_raw = load('wapo.distilbert.joblib') # load this enormous 5gb file into memory.
+
+@lru_cache()
+def get_body():
+    # need to put it after the NamedVectors object definition or
+    # else we don't know what that object means
+    wapo_vectors_raw = load('wapo.distilbert.joblib') # load this enormous 5gb file into memory.
 
 
-# load in my word embeddings
-body = wapo_vectors_raw['body']
-vecs_body = NamedVectors(body.name_to_row, body.vectors)
-title = wapo_vectors_raw['title']
-vecs_title = NamedVectors(title.name_to_row, title.vectors)
+    # load in my word embeddings
+    body = wapo_vectors_raw['body']
+    vecs_body = NamedVectors(body.name_to_row, body.vectors)
+
+    return vecs_body
 
 """
 stoplabels = {
@@ -137,11 +142,8 @@ def extract_features(left: T.Dict[str,T.Any], right: T.Dict[str,T.Any]) -> T.Dic
 
     #q_named = get_named_entities(qdoc.body)
     #doc_named = get_named_entities(doc.body)
-    qvec_body = body.get(qdoc.id)
-    dvec_body = body.get(doc.id)
-
-    qner = id_to_ner[qdoc.id]
-    dner = id_to_ner[doc.id]
+    qvec_body = get_body().get(qdoc.id)
+    dvec_body = get_body().get(doc.id)
 
 
     #qvec_title = title.get(qdoc.id)
